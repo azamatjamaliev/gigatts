@@ -1,4 +1,4 @@
-# GigaTTS
+# GigaSTT
 
 Диктовка в активное текстовое поле и расшифровка звонков. Распознавание локальное, модель `v3_e2e_rnnt` из [GigaAM](https://github.com/salute-developers/GigaAM) (Salute Developers, MIT).
 
