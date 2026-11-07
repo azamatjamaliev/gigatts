@@ -1,0 +1,49 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="using:GigaTTS"
+        x:Class="GigaTTS.SettingsWindow"
+        Title="Настройки"
+        Width="560" Height="700"
+        MinWidth="480" MinHeight="560"
+        WindowStartupLocation="CenterScreen">
+  <ScrollViewer>
+    <StackPanel Margin="24" Spacing="22">
+      <StackPanel Spacing="8">
+        <TextBlock Text="Распознавание" FontSize="18" FontWeight="SemiBold"/>
+        <TextBlock Text="{Binding ModelTitle}"/>
+        <TextBlock Text="{Binding StatusDetail}" Opacity="0.7" TextWrapping="Wrap"/>
+        <TextBlock Text="Устройство"/>
+        <ComboBox x:Name="ModelDeviceBox" HorizontalAlignment="Stretch"/>
+        <local:InstallView/>
+        <Button x:Name="ReloadButton" Content="Повторить загрузку" HorizontalAlignment="Left" Click="OnReload"/>
+      </StackPanel>
+
+      <StackPanel Spacing="8">
+        <TextBlock Text="Диктовка" FontSize="18" FontWeight="SemiBold"/>
+        <StackPanel Orientation="Horizontal" Spacing="8">
+          <TextBlock x:Name="HotkeyLabel" VerticalAlignment="Center"/>
+          <Button x:Name="CaptureButton" Content="Изменить" Click="OnCapture"/>
+          <Button Content="Правый Alt" Click="OnResetHotkey"/>
+        </StackPanel>
+        <TextBlock Opacity="0.7" TextWrapping="Wrap"
+                   Text="Удерживайте клавишу, говорите и отпустите — текст вставится в поле, где стоит курсор. Короткое нажатие короче 0,3 с игнорируется. Esc отменяет запись."/>
+        <TextBlock Text="Микрофон"/>
+        <ComboBox x:Name="MicBox" HorizontalAlignment="Stretch"/>
+      </StackPanel>
+
+      <StackPanel Spacing="8">
+        <TextBlock Text="Разрешения" FontSize="18" FontWeight="SemiBold"/>
+        <local:PermissionView/>
+        <TextBlock Opacity="0.7" TextWrapping="Wrap"
+                   Text="Системный звук — это то, что воспроизводит компьютер. Видео экрана не снимается."/>
+      </StackPanel>
+
+      <StackPanel Spacing="8">
+        <TextBlock Text="Приложение" FontSize="18" FontWeight="SemiBold"/>
+        <CheckBox x:Name="LoginBox" Content="Запускать при входе в Windows"/>
+        <TextBlock Opacity="0.7" TextWrapping="Wrap"
+                   Text="Запись звонка начинается только по вашей команде. Предупредите собеседника, если этого требует ситуация. Пишется микрофон этого компьютера и звук его колонок."/>
+      </StackPanel>
+    </StackPanel>
+  </ScrollViewer>
+</Window>

@@ -50,6 +50,12 @@ def load_model(model_name: str):
     if device == "mps" and not torch.backends.mps.is_available():
         print("MPS недоступен, используется CPU", file=sys.stderr, flush=True)
         device = "cpu"
+    elif device == "cuda" and not torch.cuda.is_available():
+        print("CUDA недоступна, используется CPU", file=sys.stderr, flush=True)
+        device = "cpu"
+    elif device not in ("cpu", "mps", "cuda"):
+        print(f"Неизвестное устройство {device}, используется CPU", file=sys.stderr, flush=True)
+        device = "cpu"
 
     def _load(target: str):
         return gigaam.load_model(
@@ -64,9 +70,10 @@ def load_model(model_name: str):
     except Exception:
         if device == "cpu":
             raise
-        print("Не удалось загрузить модель на MPS, повтор на CPU", file=sys.stderr, flush=True)
+        print(f"Не удалось загрузить модель на {device}, повтор на CPU", file=sys.stderr, flush=True)
         traceback.print_exc(file=sys.stderr)
-        model = _load("cpu")
+        device = "cpu"
+        model = _load(device)
     print(f"model ready: {model_name} on {device}", file=sys.stderr, flush=True)
     return model
 

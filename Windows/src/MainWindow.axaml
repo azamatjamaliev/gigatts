@@ -1,0 +1,105 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="GigaTTS.MainWindow"
+        Title="GigaTTS"
+        Width="980" Height="640"
+        MinWidth="860" MinHeight="520"
+        WindowStartupLocation="CenterScreen">
+  <Grid RowDefinitions="Auto,*">
+    <Grid ColumnDefinitions="Auto,*,Auto" Margin="16,10">
+      <StackPanel Orientation="Horizontal" Spacing="8">
+        <Button x:Name="CallsTab" Content="Звонки" Click="OnCallsTab"/>
+        <Button x:Name="DebugTab" Content="Отладка" Click="OnDebugTab"/>
+      </StackPanel>
+      <Button Grid.Column="2" Content="Настройки" Click="OnSettings"/>
+    </Grid>
+    <Border Grid.Row="0" Height="1" VerticalAlignment="Bottom" Background="#33000000"/>
+
+    <Grid x:Name="CallsPage" Grid.Row="1" ColumnDefinitions="280,*">
+      <ListBox x:Name="CallList" Margin="8">
+        <ListBox.ItemTemplate>
+          <DataTemplate>
+            <StackPanel Margin="0,4">
+              <TextBlock Text="{Binding Title}"/>
+              <TextBlock Text="{Binding Subtitle}" Opacity="0.65" FontSize="12"/>
+            </StackPanel>
+          </DataTemplate>
+        </ListBox.ItemTemplate>
+      </ListBox>
+      <Grid Grid.Column="1" Margin="20">
+        <StackPanel x:Name="EmptyState" Spacing="8" HorizontalAlignment="Center" VerticalAlignment="Center">
+          <TextBlock Text="Нет записи" FontSize="20" HorizontalAlignment="Center"/>
+          <TextBlock Opacity="0.7" TextWrapping="Wrap" TextAlignment="Center" MaxWidth="420"
+                     Text="Начните запись звонка из меню значка GigaTTS. Сохраняются микрофон и системный звук."/>
+        </StackPanel>
+        <DockPanel x:Name="Detail" IsVisible="False">
+          <StackPanel DockPanel.Dock="Top" Spacing="8">
+            <Grid ColumnDefinitions="*,Auto">
+              <StackPanel Spacing="4">
+                <TextBlock x:Name="DetailTitle" FontSize="22" FontWeight="Bold"/>
+                <TextBlock x:Name="DetailLine" Opacity="0.7"/>
+              </StackPanel>
+              <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
+                <Button x:Name="ListenButton" Content="Слушать" Click="OnListen"/>
+                <Button x:Name="AgainButton" Content="Расшифровать снова" Click="OnAgain"/>
+                <Button x:Name="ExportButton" Content="Экспорт…" Click="OnExport"/>
+                <Button x:Name="DeleteButton" Content="Удалить" Click="OnDelete"/>
+              </StackPanel>
+            </Grid>
+            <TextBlock x:Name="SystemNote" Opacity="0.7" TextWrapping="Wrap"
+                       Text="Дорожка собеседника не записана. Системный звук — это то, что воспроизводит компьютер."/>
+          </StackPanel>
+          <StackPanel x:Name="NoTranscript" Spacing="8" HorizontalAlignment="Center" VerticalAlignment="Center">
+            <TextBlock Text="Расшифровки нет" FontSize="20" HorizontalAlignment="Center"/>
+            <TextBlock Opacity="0.7" Text="Остановите запись из меню или нажмите «Расшифровать снова»."/>
+          </StackPanel>
+          <ScrollViewer x:Name="TranscriptScroll">
+            <ItemsControl x:Name="Segments">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate>
+                  <Grid ColumnDefinitions="78,120,*" Margin="0,4">
+                    <TextBlock Text="{Binding Clock}" FontFamily="Consolas,monospace" Opacity="0.65"/>
+                    <TextBlock Grid.Column="1" Text="{Binding SpeakerTitle}" FontWeight="SemiBold"/>
+                    <TextBlock Grid.Column="2" Text="{Binding Text}" TextWrapping="Wrap"/>
+                  </Grid>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </ScrollViewer>
+        </DockPanel>
+      </Grid>
+    </Grid>
+
+    <Grid x:Name="DebugPage" Grid.Row="1" RowDefinitions="Auto,*" IsVisible="False" Margin="16">
+      <StackPanel Spacing="8">
+        <Grid ColumnDefinitions="*,Auto">
+          <TextBlock Text="Состояние" FontSize="18" FontWeight="SemiBold"/>
+          <TextBlock x:Name="DebugPhase" Grid.Column="1" Opacity="0.7"/>
+        </Grid>
+        <TextBlock x:Name="DebugModel"/>
+        <TextBlock x:Name="DebugError" Foreground="#C62828" TextWrapping="Wrap" IsVisible="False"/>
+        <TextBlock x:Name="DebugCapture" TextWrapping="Wrap"/>
+        <StackPanel Orientation="Horizontal" Spacing="8">
+          <Button x:Name="PlayLastButton" Content="Прослушать" Click="OnPlayLast"/>
+          <Button x:Name="RecognizeButton" Content="Распознать ещё раз" Click="OnRecognize"/>
+          <Button x:Name="OpenWavButton" Content="Открыть WAV…" Click="OnOpenWav"/>
+          <Button x:Name="InsertButton" Content="Вставить текст" Click="OnInsert"/>
+        </StackPanel>
+        <Border x:Name="ResultFrame" Padding="8" BorderBrush="#808080" BorderThickness="1" CornerRadius="6" IsVisible="False">
+          <TextBlock x:Name="DebugResult" TextWrapping="Wrap"/>
+        </Border>
+      </StackPanel>
+      <DockPanel Grid.Row="1" Margin="0,16,0,0">
+        <Grid DockPanel.Dock="Top" ColumnDefinitions="*,Auto,Auto,Auto" Margin="0,0,0,8">
+          <TextBlock Text="Журнал" FontSize="18" FontWeight="SemiBold" VerticalAlignment="Center"/>
+          <Button Grid.Column="1" Content="Скопировать" Margin="8,0,0,0" Click="OnCopyLog"/>
+          <Button Grid.Column="2" Content="Показать в проводнике" Margin="8,0,0,0" Click="OnRevealLog"/>
+          <Button Grid.Column="3" Content="Очистить" Margin="8,0,0,0" Click="OnClearLog"/>
+        </Grid>
+        <TextBlock x:Name="LogPath" DockPanel.Dock="Top" Opacity="0.65" FontSize="12" Margin="0,0,0,8"/>
+        <TextBox x:Name="LogBox" IsReadOnly="True" AcceptsReturn="True" TextWrapping="NoWrap"
+                 FontFamily="Consolas,Cascadia Mono,monospace" FontSize="12"/>
+      </DockPanel>
+    </Grid>
+  </Grid>
+</Window>

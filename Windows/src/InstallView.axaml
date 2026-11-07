@@ -1,0 +1,15 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="GigaTTS.InstallView">
+  <StackPanel Spacing="8">
+    <Button x:Name="InstallButton" Content="Установить распознавание" HorizontalAlignment="Left" Click="OnInstall"/>
+    <TextBlock x:Name="Hint" Opacity="0.7" TextWrapping="Wrap"
+               Text="Ставит Python, Git, ffmpeg, PyTorch и GigaAM в папку данных пользователя. Интернет нужен для загрузки. Кнопка берёт файлы из папки приложения, поэтому собранный GigaTTS можно переносить."/>
+    <Border x:Name="LogFrame" BorderBrush="#808080" BorderThickness="1" CornerRadius="8" Padding="8" IsVisible="False">
+      <ScrollViewer x:Name="LogScroll" Height="220" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+        <TextBox x:Name="LogBox" IsReadOnly="True" AcceptsReturn="True" TextWrapping="Wrap"
+                 FontFamily="Consolas,Cascadia Mono,monospace" FontSize="12" Background="Transparent" BorderThickness="0"/>
+      </ScrollViewer>
+    </Border>
+  </StackPanel>
+</UserControl>

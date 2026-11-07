@@ -4,3 +4,7 @@ Worker/.venv/
 **/__pycache__/
 *.pyc
 .DS_Store
+**/bin/
+**/obj/
+.vs/
+*.user

@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>GigaTTS</RootNamespace>
+    <AssemblyName>GigaTTS</AssemblyName>
+    <Version>1.0.0</Version>
+    <Product>GigaTTS</Product>
+    <Description>Локальная диктовка и расшифровка звонков</Description>
+    <ApplicationManifest Condition="!$(RuntimeIdentifier.StartsWith('linux'))">app.manifest</ApplicationManifest>
+    <ApplicationIcon Condition="!$(RuntimeIdentifier.StartsWith('linux'))">Assets\app.ico</ApplicationIcon>
+    <BuiltInComInteropSupport Condition="!$(RuntimeIdentifier.StartsWith('linux'))">true</BuiltInComInteropSupport>
+    <NoWarn>$(NoWarn);CA1416;AVLN3001</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Avalonia" Version="11.3.22" />
+    <PackageReference Include="Avalonia.Desktop" Version="11.3.22" />
+    <PackageReference Include="Avalonia.Themes.Fluent" Version="11.3.22" />
+    <PackageReference Include="Avalonia.Fonts.Inter" Version="11.3.22" />
+    <PackageReference Include="NAudio" Version="2.2.1" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <AvaloniaResource Include="Assets\icon.png" />
+    <Content Include="..\..\Worker\worker.py" Link="worker.py" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="..\..\Worker\requirements.txt" Link="requirements.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>

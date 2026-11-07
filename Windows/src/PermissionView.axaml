@@ -1,0 +1,23 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="GigaTTS.PermissionView">
+  <StackPanel Spacing="8">
+    <Grid ColumnDefinitions="24,*,Auto">
+      <TextBlock x:Name="MicMark" Text="○" VerticalAlignment="Center"/>
+      <TextBlock Grid.Column="1" Text="Микрофон" VerticalAlignment="Center"/>
+      <Button Grid.Column="2" x:Name="MicButton" Content="Разрешить" Click="OnMic"/>
+    </Grid>
+    <Grid ColumnDefinitions="24,*,Auto">
+      <TextBlock x:Name="HookMark" Text="○" VerticalAlignment="Center"/>
+      <TextBlock Grid.Column="1" Text="Глобальная клавиша" VerticalAlignment="Center"/>
+      <Button Grid.Column="2" x:Name="HookButton" Content="Проверить" Click="OnHook"/>
+    </Grid>
+    <Grid ColumnDefinitions="24,*,Auto">
+      <TextBlock x:Name="AudioMark" Text="○" VerticalAlignment="Center"/>
+      <TextBlock Grid.Column="1" Text="Системный звук" VerticalAlignment="Center"/>
+      <Button Grid.Column="2" x:Name="AudioButton" Content="Открыть" Click="OnAudio"/>
+    </Grid>
+    <Button Content="Проверить снова" HorizontalAlignment="Left" Click="OnRefresh"/>
+    <TextBlock x:Name="Hint" Opacity="0.7" TextWrapping="Wrap" IsVisible="False"/>
+  </StackPanel>
+</UserControl>
