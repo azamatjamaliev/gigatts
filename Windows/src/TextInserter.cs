@@ -19,6 +19,7 @@ static class TextInserter
             AppLog.Shared.Write("WARN", "Вставка пропущена: защищённое поле.");
             return InsertOutcome.Secure;
         }
+        HotkeyMonitor.ReleaseStuckModifiers();
         if (Native.SendText(trimmed))
         {
             AppLog.Shared.Write("INFO", "Вставка через ввод символов.");
@@ -41,6 +42,7 @@ static class TextInserter
             return false;
         var marker = Native.GetClipboardSequenceNumber();
         AppLog.Shared.Write("INFO", "Вставка через Ctrl+V.");
+        HotkeyMonitor.ReleaseStuckModifiers();
         Native.SendCtrlV();
         var timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(800) };
         timer.Tick += (_, _) =>
