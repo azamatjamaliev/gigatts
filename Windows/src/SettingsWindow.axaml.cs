@@ -1,5 +1,8 @@
+using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
+using Avalonia.Media;
+using Avalonia.Threading;
 
 namespace GigaTTS;
 
@@ -7,6 +10,7 @@ public partial class SettingsWindow : Window
 {
     readonly AppState _state;
     bool _applying;
+    DispatcherTimer? _copyTimer;
 
     public SettingsWindow(AppState state)
     {
@@ -61,6 +65,34 @@ public partial class SettingsWindow : Window
         Select(MicBox, _state.SelectedDeviceId);
         ReloadButton.IsVisible = _state.ModelKind == ModelKind.Failed;
         LoginBox.IsChecked = _state.LaunchAtLogin;
+        var failed = _state.ModelKind == ModelKind.Failed;
+        var hasError = failed && _state.StatusDetail.Length > 0;
+        CopyErrorButton.IsVisible = hasError;
+        ErrorScroll.IsVisible = hasError;
+        StatusLine.IsVisible = !hasError;
+        if (failed)
+        {
+            ModelBadge.Background = new SolidColorBrush(Color.FromRgb(0xF8, 0xD2, 0xD2));
+            ModelBadge.Padding = new Thickness(8, 2);
+            ModelTitleText.Foreground = new SolidColorBrush(Color.FromRgb(0x9F, 0x1D, 0x1D));
+        }
+        else
+        {
+            ModelBadge.Background = Brushes.Transparent;
+            ModelBadge.Padding = new Thickness(0);
+            ModelTitleText.ClearValue(TextBlock.ForegroundProperty);
+        }
+        if (hasError)
+        {
+            if (ErrorText.Text != _state.StatusDetail)
+                ErrorText.Text = _state.StatusDetail;
+        }
+        else
+        {
+            _copyTimer?.Stop();
+            CopyErrorButton.Content = "Скопировать";
+            ErrorText.Text = "";
+        }
         _applying = false;
     }
 
@@ -91,4 +123,20 @@ public partial class SettingsWindow : Window
     void OnCapture(object? sender, RoutedEventArgs e) => _state.BeginHotkeyCapture();
     void OnResetHotkey(object? sender, RoutedEventArgs e) => _state.ResetHotkey();
     void OnReload(object? sender, RoutedEventArgs e) => _state.ReloadModel();
+
+    void OnCopyError(object? sender, RoutedEventArgs e)
+    {
+        var text = ModelErrorText.CopyPayload(_state.StatusDetail);
+        if (text.Length == 0 || !PlatformClipboard.TrySetText(text))
+            return;
+        CopyErrorButton.Content = "Скопировано";
+        _copyTimer?.Stop();
+        _copyTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(2) };
+        _copyTimer.Tick += (_, _) =>
+        {
+            _copyTimer?.Stop();
+            CopyErrorButton.Content = "Скопировать";
+        };
+        _copyTimer.Start();
+    }
 }

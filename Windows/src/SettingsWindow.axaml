@@ -10,8 +10,16 @@
     <StackPanel Margin="24" Spacing="22">
       <StackPanel Spacing="8">
         <TextBlock Text="Распознавание" FontSize="18" FontWeight="SemiBold"/>
-        <TextBlock Text="{Binding ModelTitle}"/>
-        <TextBlock Text="{Binding StatusDetail}" Opacity="0.7" TextWrapping="Wrap"/>
+        <StackPanel Orientation="Horizontal" Spacing="8">
+          <Border x:Name="ModelBadge" CornerRadius="8" Padding="0" HorizontalAlignment="Left" VerticalAlignment="Center">
+            <TextBlock x:Name="ModelTitleText" Text="{Binding ModelTitle}"/>
+          </Border>
+          <Button x:Name="CopyErrorButton" Content="Скопировать" Padding="10,4" VerticalAlignment="Center" IsVisible="False" Click="OnCopyError"/>
+        </StackPanel>
+        <ScrollViewer x:Name="ErrorScroll" MaxHeight="180" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto" IsVisible="False">
+          <SelectableTextBlock x:Name="ErrorText" TextWrapping="Wrap" Opacity="0.7"/>
+        </ScrollViewer>
+        <TextBlock x:Name="StatusLine" Text="{Binding StatusDetail}" Opacity="0.7" TextWrapping="Wrap"/>
         <TextBlock Text="Устройство"/>
         <ComboBox x:Name="ModelDeviceBox" HorizontalAlignment="Stretch"/>
         <local:InstallView/>

@@ -865,21 +865,50 @@ public sealed class AppState : Observable
             return;
         }
         Note($"Запуск воркера. python={located.Value.Python} script={located.Value.Script}");
-        try
-        {
-            _worker.Start(located.Value.Python, located.Value.Script, ModelDevice);
-        }
-        catch (Exception ex)
-        {
-            SetModel(ModelKind.Failed, ex.Message);
-            LastError = ex.Message;
-            Raise(nameof(LastError));
-            Note("Не удалось запустить воркер: " + ex.Message, "ERROR");
-            return;
-        }
         SetModel(ModelKind.Loading, "Загрузка v3_e2e_rnnt…");
         var generation = _generation;
-        _ = LoadModel(generation);
+        _ = StartAndLoad(located.Value, generation);
+    }
+
+    async Task StartAndLoad(WorkerLocator.Located located, int generation)
+    {
+        WorkerRuntime.SyncBundledScript();
+        try
+        {
+            if (await WorkerRuntime.EnsureTruststore(located.Python))
+                OnUi(() => Note("В окружение добавлен пакет truststore."));
+        }
+        catch
+        {
+            // Offline load of an already downloaded model must still proceed.
+        }
+        if (_shutdown || generation != _generation)
+            return;
+        var started = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        OnUi(() =>
+        {
+            if (_shutdown || generation != _generation)
+            {
+                started.TrySetResult(false);
+                return;
+            }
+            try
+            {
+                _worker.Start(located.Python, WorkerRuntime.ScriptToLaunch(located.Script), ModelDevice);
+                started.TrySetResult(true);
+            }
+            catch (Exception ex)
+            {
+                SetModel(ModelKind.Failed, ex.Message);
+                LastError = ex.Message;
+                Raise(nameof(LastError));
+                Note("Не удалось запустить воркер: " + ex.Message, "ERROR");
+                started.TrySetResult(false);
+            }
+        });
+        if (!await started.Task || _shutdown || generation != _generation)
+            return;
+        await LoadModel(generation);
     }
 
     async Task LoadModel(int generation)
@@ -908,12 +937,10 @@ public sealed class AppState : Observable
             {
                 if (generation != _generation)
                     return;
-                SetModel(ModelKind.Failed, ex.Message);
                 LastError = ex.Message;
                 Raise(nameof(LastError));
                 var tail = _logTail.Length > 280 ? _logTail[^280..] : _logTail;
-                if (tail.Length > 0)
-                    SetStatus(tail);
+                SetModel(ModelKind.Failed, ModelErrorText.MergeFailure(tail, ex.Message));
                 Note("Модель не загрузилась: " + ex.Message + " " + tail, "ERROR");
             });
         }
@@ -1034,7 +1061,9 @@ public sealed class AppState : Observable
         Raise(nameof(ModelKind));
         Raise(nameof(ModelReady));
         if (detail != null)
-            StatusDetail = detail;
+            StatusDetail = kind == ModelKind.Failed
+                ? ModelErrorText.WithClockHint(detail, OperatingSystem.IsWindows())
+                : detail;
         Raise(nameof(StatusDetail));
         Touch();
     }

@@ -494,6 +494,112 @@ sealed class WorkerInstaller
     }
 }
 
+static class WorkerRuntime
+{
+    public static readonly string[] TruststoreInstallArguments =
+    [
+        "-m", "pip", "install", "--disable-pip-version-check", "truststore"
+    ];
+
+    static bool _truststoreReady;
+
+    public static void SyncBundledScript()
+    {
+        var source = WorkerLocator.BundledWorker();
+        if (string.IsNullOrEmpty(source))
+            return;
+        var dest = Path.Combine(AppPaths.Support, "worker.py");
+        try
+        {
+            var fullSource = Path.GetFullPath(source);
+            var fullDest = Path.GetFullPath(dest);
+            if (string.Equals(fullSource, fullDest, StringComparison.OrdinalIgnoreCase))
+                return;
+            Directory.CreateDirectory(AppPaths.Support);
+            File.Copy(fullSource, fullDest, true);
+        }
+        catch
+        {
+            // The previously installed script remains.
+        }
+    }
+
+    public static string ScriptToLaunch(string located)
+    {
+        var refreshed = Path.Combine(AppPaths.Support, "worker.py");
+        if (!File.Exists(refreshed) || string.IsNullOrEmpty(located))
+            return located;
+        try
+        {
+            var root = Path.GetFullPath(AppPaths.Support);
+            if (!root.EndsWith(Path.DirectorySeparatorChar))
+                root += Path.DirectorySeparatorChar;
+            if (Path.GetFullPath(located).StartsWith(root, StringComparison.OrdinalIgnoreCase))
+                return refreshed;
+        }
+        catch
+        {
+            // Keep the path the locator already resolved.
+        }
+        return located;
+    }
+
+    public static async Task<bool> EnsureTruststore(string python)
+    {
+        if (_truststoreReady || string.IsNullOrEmpty(python) || !File.Exists(python))
+            return false;
+        if (await RunQuiet(python, 15, "-c", "import truststore"))
+        {
+            _truststoreReady = true;
+            return false;
+        }
+        var installed = await RunQuiet(python, 30, TruststoreInstallArguments);
+        if (installed)
+            _truststoreReady = true;
+        return installed;
+    }
+
+    static async Task<bool> RunQuiet(string python, int seconds, params string[] args)
+    {
+        try
+        {
+            var info = new ProcessStartInfo(python)
+            {
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                WorkingDirectory = AppPaths.Support
+            };
+            foreach (var arg in args)
+                info.ArgumentList.Add(arg);
+            info.Environment["PYTHONUNBUFFERED"] = "1";
+            info.Environment["PIP_DISABLE_PIP_VERSION_CHECK"] = "1";
+            using var process = new Process { StartInfo = info };
+            if (!process.Start())
+                return false;
+            var stdout = process.StandardOutput.ReadToEndAsync();
+            var stderr = process.StandardError.ReadToEndAsync();
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(seconds));
+            try
+            {
+                await process.WaitForExitAsync(timeout.Token);
+            }
+            catch (OperationCanceledException)
+            {
+                try { if (!process.HasExited) process.Kill(true); } catch { /* Already gone. */ }
+                return false;
+            }
+            await Task.WhenAll(stdout, stderr);
+            return process.ExitCode == 0;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+}
+
 sealed class WorkerClient
 {
     readonly object _gate = new();

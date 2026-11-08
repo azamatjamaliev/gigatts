@@ -7,6 +7,15 @@ Library logs are sent to stderr so they cannot break the protocol.
 
 from __future__ import annotations
 
+# OS trust store, before urllib or gigaam downloads. Verification stays on.
+# Python.org on Windows can reject a chain that Schannel already accepts
+# (expired Let's Encrypt cross-sign). A wrong clock still fails, on purpose.
+try:
+    import truststore
+    truststore.inject_into_ssl()
+except Exception:
+    pass
+
 import json
 import math
 import os
