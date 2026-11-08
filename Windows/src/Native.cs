@@ -9,8 +9,10 @@ static class Native
     const int WhKeyboardLl = 13;
     const uint GmemMoveable = 0x0002;
     const uint CfUnicodeText = 13;
+    const uint KeyeventfExtendedKey = 0x0001;
     const uint KeyeventfKeyup = 0x0002;
     const uint KeyeventfUnicode = 0x0004;
+    const uint MapvkVkToVsc = 0;
     const int InputKeyboard = 1;
 
     public delegate IntPtr HookProc(int nCode, IntPtr wParam, IntPtr lParam);
@@ -104,6 +106,9 @@ static class Native
 
     [DllImport("user32.dll")]
     public static extern short GetAsyncKeyState(int virtualKey);
+
+    [DllImport("user32.dll", EntryPoint = "MapVirtualKeyW")]
+    static extern uint MapVirtualKey(uint code, uint mapType);
 
     [DllImport("user32.dll")]
     static extern bool GetCursorPos(out Point point);
@@ -232,6 +237,33 @@ static class Native
             VirtualKey(0x11, true)
         };
         SendInput((uint)events.Length, events, Marshal.SizeOf<Input>());
+    }
+
+    public static bool ReleaseVirtualKey(ushort virtualKey)
+    {
+        if (!OperatingSystem.IsWindows())
+            return false;
+        var scan = (ushort)(MapVirtualKey(virtualKey, MapvkVkToVsc) & 0xFF);
+        var flags = KeyeventfKeyup;
+        if (virtualKey is 0xA3 or 0xA5 or 0x5B or 0x5C)
+            flags |= KeyeventfExtendedKey;
+        var input = new[]
+        {
+            new Input
+            {
+                Type = InputKeyboard,
+                Data = new InputUnion
+                {
+                    Key = new KeyInput
+                    {
+                        VirtualKey = virtualKey,
+                        Scan = scan,
+                        Flags = flags
+                    }
+                }
+            }
+        };
+        return SendInput(1, input, Marshal.SizeOf<Input>()) == 1;
     }
 
     public static bool TryGetText(out string text)
