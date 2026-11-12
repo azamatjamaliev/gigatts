@@ -8,7 +8,7 @@ let package = Package(
         .executableTarget(
             name: "GigaTTS",
             path: "App",
-            exclude: ["Info.plist"]
+            exclude: ["Info.plist", "Assets"]
         )
     ]
 )

@@ -1,0 +1,19 @@
+Third-party notices
+===================
+
+pyannote/speaker-diarization-community-1
+---------------------------------------
+Speaker diarization pipeline used for single-track / empty-mic call recordings.
+License: Creative Commons Attribution 4.0 International (CC-BY-4.0)
+https://huggingface.co/pyannote/speaker-diarization-community-1
+https://creativecommons.org/licenses/by/4.0/
+
+When shipping a built app, essential weights may be bundled under
+models/pyannote-speaker-diarization-community-1. Attribution to pyannote /
+pyannoteAI is required under CC-BY-4.0.
+
+GigaAM
+------
+Speech recognition model (Salute Developers).
+License: MIT
+https://github.com/salute-developers/GigaAM

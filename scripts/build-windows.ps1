@@ -36,6 +36,45 @@ if ($LASTEXITCODE -ne 0) {
 
 Copy-Item (Join-Path $Root "Worker\worker.py") (Join-Path $Out "worker.py") -Force
 Copy-Item (Join-Path $Root "Worker\requirements.txt") (Join-Path $Out "requirements.txt") -Force
+Copy-Item (Join-Path $Root "NOTICE") (Join-Path $Out "NOTICE") -Force
+
+$DirName = "pyannote-speaker-diarization-community-1"
+function Test-DiarizationReady([string]$Path) {
+    return (Test-Path (Join-Path $Path "config.yaml")) `
+        -and (Test-Path (Join-Path $Path "embedding\pytorch_model.bin")) `
+        -and (Test-Path (Join-Path $Path "segmentation\pytorch_model.bin")) `
+        -and (Test-Path (Join-Path $Path "plda\plda.npz")) `
+        -and (Test-Path (Join-Path $Path "plda\xvec_transform.npz"))
+}
+$Source = $env:GIGATTS_DIARIZATION_SOURCE
+if (-not $Source) {
+    foreach ($candidate in @(
+        (Join-Path $Root "BundledModels\$DirName"),
+        (Join-Path $Root "dist\models\$DirName"),
+        (Join-Path $env:USERPROFILE ".cache\gigatts\$DirName")
+    )) {
+        if (Test-DiarizationReady $candidate) {
+            $Source = $candidate
+            break
+        }
+    }
+}
+if (-not $Source -or -not (Test-DiarizationReady $Source)) {
+    throw "Нет локальной модели diarization. Ожидается BundledModels\$DirName после clone, либо скачайте: Worker\.venv\Scripts\python.exe -u Worker\worker.py --download-diarization, либо положите папку в dist\models\$DirName"
+}
+$Dest = Join-Path $Out "models\$DirName"
+if (Test-Path $Dest) {
+    Remove-Item -Recurse -Force $Dest
+}
+New-Item -ItemType Directory -Force -Path (Join-Path $Dest "embedding") | Out-Null
+New-Item -ItemType Directory -Force -Path (Join-Path $Dest "segmentation") | Out-Null
+New-Item -ItemType Directory -Force -Path (Join-Path $Dest "plda") | Out-Null
+Copy-Item (Join-Path $Source "config.yaml") (Join-Path $Dest "config.yaml") -Force
+Copy-Item (Join-Path $Source "embedding\pytorch_model.bin") (Join-Path $Dest "embedding\pytorch_model.bin") -Force
+Copy-Item (Join-Path $Source "segmentation\pytorch_model.bin") (Join-Path $Dest "segmentation\pytorch_model.bin") -Force
+Copy-Item (Join-Path $Source "plda\plda.npz") (Join-Path $Dest "plda\plda.npz") -Force
+Copy-Item (Join-Path $Source "plda\xvec_transform.npz") (Join-Path $Dest "plda\xvec_transform.npz") -Force
+Write-Host "diarization bundled: $Dest ← $Source"
 
 if (Test-Path $Zip) {
     Remove-Item -Force $Zip

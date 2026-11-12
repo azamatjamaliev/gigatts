@@ -48,8 +48,59 @@ static class WorkerLocator
         return null;
     }
 
+    public const string DiarizationDirName = "pyannote-speaker-diarization-community-1";
+
     public static string? BundledWorker() => Bundled("worker.py");
     public static string? BundledRequirements() => Bundled("requirements.txt");
+
+    public static string? BundledDiarizationModel()
+    {
+        foreach (var root in new[] { AppContext.BaseDirectory }.Concat(SearchRoots()))
+        {
+            foreach (var relative in new[]
+            {
+                Path.Combine("models", DiarizationDirName),
+                Path.Combine("dist", "models", DiarizationDirName)
+            })
+            {
+                var candidate = Path.Combine(root, relative);
+                if (DiarizationReady(candidate))
+                    return candidate;
+            }
+        }
+        var cache = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+            ".cache", "gigatts", DiarizationDirName);
+        return DiarizationReady(cache) ? cache : null;
+    }
+
+    public static void ApplyDiarizationEnvironment(ProcessStartInfo info)
+    {
+        if (!string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("GIGATTS_DIARIZATION_MODEL")))
+            return;
+        if (info.Environment.ContainsKey("GIGATTS_DIARIZATION_MODEL")
+            && !string.IsNullOrWhiteSpace(info.Environment["GIGATTS_DIARIZATION_MODEL"]))
+            return;
+        if (BundledDiarizationModel() is { } path)
+            info.Environment["GIGATTS_DIARIZATION_MODEL"] = path;
+    }
+
+    public static bool DiarizationReady(string root)
+    {
+        foreach (var relative in new[]
+        {
+            "config.yaml",
+            Path.Combine("embedding", "pytorch_model.bin"),
+            Path.Combine("segmentation", "pytorch_model.bin"),
+            Path.Combine("plda", "plda.npz"),
+            Path.Combine("plda", "xvec_transform.npz")
+        })
+        {
+            if (!File.Exists(Path.Combine(root, relative)))
+                return false;
+        }
+        return true;
+    }
 
     public static string ExtraPath()
     {
@@ -133,9 +184,9 @@ sealed class WorkerInstaller
         AddDirectory(windowsApps);
 
         var workerSource = WorkerLocator.BundledWorker()
-            ?? throw new InvalidOperationException("В приложении нет worker.py. Пересоберите GigaTTS.");
+            ?? throw new InvalidOperationException("В приложении нет worker.py. Пересоберите GigaПисец.");
         var requirementsSource = WorkerLocator.BundledRequirements()
-            ?? throw new InvalidOperationException("В приложении нет requirements.txt. Пересоберите GigaTTS.");
+            ?? throw new InvalidOperationException("В приложении нет requirements.txt. Пересоберите GigaПисец.");
         var installedWorker = Path.Combine(AppPaths.Support, "worker.py");
         var requirements = Path.Combine(AppPaths.Support, "requirements.txt");
         File.Copy(workerSource, installedWorker, true);
@@ -163,9 +214,23 @@ sealed class WorkerInstaller
         if (!File.Exists(venvPython))
             throw new InvalidOperationException("Не удалось создать окружение Python.");
 
-        _log("Устанавливаю PyTorch и GigaAM. Первый раз это занимает несколько минут…\n");
+        _log("Устанавливаю PyTorch, GigaAM и pyannote. Первый раз это занимает несколько минут…\n");
         await Run(venvPython, "-u", "-m", "pip", "install", "--upgrade", "pip");
         await Run(venvPython, "-u", "-m", "pip", "install", "-r", requirements);
+        if (WorkerLocator.BundledDiarizationModel() is { } bundled)
+        {
+            _log("Использую встроенную модель разделения спикеров: " + bundled + "\n");
+        }
+        else
+        {
+            _log("Скачиваю модель разделения спикеров (pyannote)…\n");
+            var diarization = await Start(venvPython, new[] { "-u", installedWorker, "--download-diarization" });
+            if (diarization != 0)
+            {
+                _log("Разделение спикеров отложено: в сборке нет models/, либо задайте HF_TOKEN "
+                    + "(или %USERPROFILE%\\.cache\\gigatts\\hf-token). Диктовка и две дорожки звонка работают без этого.\n");
+            }
+        }
 
         var extras = new List<string>();
         var ffmpegDir = Path.GetDirectoryName(ffmpeg);
@@ -319,6 +384,7 @@ sealed class WorkerInstaller
         info.Environment["PYTHONUTF8"] = "1";
         info.Environment["PIP_DISABLE_PIP_VERSION_CHECK"] = "1";
         info.Environment["GIT_TERMINAL_PROMPT"] = "0";
+        WorkerLocator.ApplyDiarizationEnvironment(info);
         using var process = new Process { StartInfo = info };
         if (!process.Start())
             throw new InvalidOperationException("Не удалось запустить " + file);
@@ -640,6 +706,7 @@ sealed class WorkerClient
         info.Environment["PYTHONIOENCODING"] = "utf-8";
         info.Environment["PYTHONUTF8"] = "1";
         info.Environment["GIGATTS_DEVICE"] = device;
+        WorkerLocator.ApplyDiarizationEnvironment(info);
         var process = new Process { StartInfo = info, EnableRaisingEvents = true };
         process.Exited += (_, _) =>
         {

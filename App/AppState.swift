@@ -1,5 +1,7 @@
 import AppKit
+import AVFoundation
 import ServiceManagement
+import UniformTypeIdentifiers
 
 final class AppState: ObservableObject, @unchecked Sendable {
     @Published var phase: SessionPhase = .idle
@@ -27,6 +29,7 @@ final class AppState: ObservableObject, @unchecked Sendable {
 
     var onNeedOnboarding: (() -> Void)?
     var onOpenCalls: (() -> Void)?
+    var onOpenSettings: (() -> Void)?
 
     let worker = WorkerClient()
     let hotkeyMonitor = HotkeyMonitor()
@@ -122,7 +125,7 @@ final class AppState: ObservableObject, @unchecked Sendable {
             self?.shutdown()
         }
         startWorker()
-        note("GigaTTS запущен. log=\(AppLog.shared.fileURL.path)")
+        note("GigaПисец запущен. log=\(AppLog.shared.fileURL.path)")
         let finished = UserDefaults.standard.bool(forKey: DefaultsKey.onboarding)
         if !finished || !permissions.readyForDictation {
             DispatchQueue.main.async { [weak self] in
@@ -158,6 +161,8 @@ final class AppState: ObservableObject, @unchecked Sendable {
         }
         if hotkeyMonitor.isRunning {
             permissions.inputMonitoring = true
+        } else {
+            note("Хоткей недоступен: нет мониторинга ввода (Accessibility/Input Monitoring).", level: "WARN")
         }
     }
 
@@ -242,9 +247,47 @@ final class AppState: ObservableObject, @unchecked Sendable {
         refreshLoginItem()
     }
 
+    /// Menu-bar (LSUIElement / .accessory) apps must become regular before a window can reliably appear.
+    func revealForUI() {
+        if NSApp.activationPolicy() != .regular {
+            NSApp.setActivationPolicy(.regular)
+        }
+        NSApp.activate(ignoringOtherApps: true)
+    }
+
     func openSettings() {
-        NSApp.activate()
-        NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+        revealForUI()
+        if let onOpenSettings {
+            onOpenSettings()
+        } else {
+            // Fallback if the SwiftUI openWindow callback is not wired yet.
+            NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+        }
+        // openWindow is asynchronous; retry briefly until the settings window exists.
+        for delay in [0.0, 0.05, 0.15, 0.35] {
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+                self?.orderFrontSettingsWindow()
+            }
+        }
+    }
+
+    private func orderFrontSettingsWindow() {
+        let matches = NSApp.windows.filter { window in
+            let title = window.title
+            let autosave = window.frameAutosaveName
+            let identifier = window.identifier?.rawValue ?? ""
+            return title == "Настройки"
+                || title.localizedCaseInsensitiveContains("settings")
+                || autosave.localizedCaseInsensitiveContains("settings")
+                || identifier.localizedCaseInsensitiveContains("settings")
+        }
+        guard !matches.isEmpty else { return }
+        revealForUI()
+        for window in matches {
+            window.collectionBehavior.insert(.moveToActiveSpace)
+            window.makeKeyAndOrderFront(nil)
+            window.orderFrontRegardless()
+        }
     }
 
     var canInstallWorker: Bool {
@@ -526,7 +569,173 @@ final class AppState: ObservableObject, @unchecked Sendable {
         }
         phase = .transcribingCall
         overlay.showTranscribing()
-        transcribeCall(record)
+        if record.isMeeting {
+            transcribeMeeting(record)
+        } else {
+            transcribeCall(record)
+        }
+    }
+
+    /// Импорт WAV/m4a: одна дорожка → diarization → Собеседник1/2/…
+    func importMeetingRecording() {
+        guard phase == .idle else {
+            flash("Дождитесь окончания текущей операции")
+            return
+        }
+        guard modelStatus.isReady else {
+            flash(modelStatus.menuTitle)
+            return
+        }
+        revealForUI()
+        let panel = NSOpenPanel()
+        panel.title = "Открыть запись встречи"
+        panel.message = "Выберите WAV или m4a с диктофона"
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = false
+        panel.canChooseFiles = true
+        var types: [UTType] = [.wav]
+        if let m4a = UTType(filenameExtension: "m4a") {
+            types.append(m4a)
+        }
+        if let mpeg4Audio = UTType("public.mpeg-4-audio") {
+            types.append(mpeg4Audio)
+        }
+        panel.allowedContentTypes = types
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        beginMeetingImport(url)
+    }
+
+    private func beginMeetingImport(_ url: URL) {
+        let access = url.startAccessingSecurityScopedResource()
+        defer {
+            if access { url.stopAccessingSecurityScopedResource() }
+        }
+        let name = url.lastPathComponent
+        let record = CallRecord(
+            id: UUID(),
+            createdAt: Date(),
+            duration: 0,
+            hasSystemAudio: false,
+            segments: [],
+            kind: "meeting",
+            sourceFileName: name
+        )
+        do {
+            try FileManager.default.createDirectory(at: record.directory, withIntermediateDirectories: true)
+            let staged = record.directory.appendingPathComponent("source\(url.pathExtension.isEmpty ? "" : ".\(url.pathExtension)")")
+            if FileManager.default.fileExists(atPath: staged.path) {
+                try FileManager.default.removeItem(at: staged)
+            }
+            try FileManager.default.copyItem(at: url, to: staged)
+            CallStore.save(record)
+            calls = CallStore.load()
+            phase = .transcribingCall
+            overlay.showTranscribing()
+            note("Импорт встречи. file=\(url.path) staged=\(staged.path)")
+            let generation = workerGeneration
+            let sourcePath = staged.path
+            let outWav = record.micURL.path
+            Task {
+                do {
+                    let response = try await self.worker.request([
+                        "cmd": "transcribe_file",
+                        "path": sourcePath,
+                        "out_wav": outWav
+                    ])
+                    let segments = Self.parseSegments(response["segments"])
+                    let duration = (response["duration"] as? NSNumber)?.doubleValue ?? 0
+                    DispatchQueue.main.async {
+                        guard generation == self.workerGeneration else { return }
+                        self.finishMeeting(record.id, segments: segments, duration: duration)
+                    }
+                } catch {
+                    DispatchQueue.main.async {
+                        guard generation == self.workerGeneration else { return }
+                        self.phase = .idle
+                        self.overlay.hide()
+                        self.lastError = error.localizedDescription
+                        self.flash("Не удалось расшифровать запись")
+                        self.note("Ошибка импорта встречи: \(error.localizedDescription)", level: "ERROR")
+                        self.calls = CallStore.load()
+                        self.onOpenCalls?()
+                    }
+                }
+            }
+        } catch {
+            CallStore.delete(record)
+            lastError = error.localizedDescription
+            flash("Не удалось открыть файл")
+            note("Ошибка копирования записи встречи: \(error.localizedDescription)", level: "ERROR")
+        }
+    }
+
+    private func finishMeeting(_ id: UUID, segments: [TranscriptSegment], duration: TimeInterval) {
+        phase = .idle
+        overlay.hide()
+        if var record = CallStore.load().first(where: { $0.id == id }) {
+            record.segments = segments
+            if duration > 0 {
+                record.duration = duration
+            } else if FileManager.default.fileExists(atPath: record.micURL.path) {
+                record.duration = Self.wavDuration(record.micURL) ?? record.duration
+            }
+            CallStore.save(record)
+        }
+        calls = CallStore.load()
+        if segments.isEmpty {
+            flash("В записи не найдена речь")
+        } else {
+            lastError = nil
+        }
+        onOpenCalls?()
+    }
+
+    private func transcribeMeeting(_ record: CallRecord) {
+        let generation = workerGeneration
+        var path = record.micURL.path
+        if !FileManager.default.fileExists(atPath: path) {
+            let sources = (try? FileManager.default.contentsOfDirectory(at: record.directory, includingPropertiesForKeys: nil)) ?? []
+            path = sources.first { $0.lastPathComponent.hasPrefix("source.") }?.path ?? path
+        }
+        guard FileManager.default.fileExists(atPath: path) else {
+            phase = .idle
+            overlay.hide()
+            lastError = "Файл записи встречи не найден"
+            flash(lastError!)
+            return
+        }
+        Task {
+            do {
+                var payload: [String: Any] = ["cmd": "transcribe_file", "path": path]
+                if path != record.micURL.path {
+                    payload["out_wav"] = record.micURL.path
+                }
+                let response = try await self.worker.request(payload)
+                let segments = Self.parseSegments(response["segments"])
+                let duration = (response["duration"] as? NSNumber)?.doubleValue ?? 0
+                DispatchQueue.main.async {
+                    guard generation == self.workerGeneration else { return }
+                    self.finishMeeting(record.id, segments: segments, duration: duration)
+                }
+            } catch {
+                DispatchQueue.main.async {
+                    guard generation == self.workerGeneration else { return }
+                    self.phase = .idle
+                    self.overlay.hide()
+                    self.lastError = error.localizedDescription
+                    self.flash("Не удалось расшифровать запись")
+                    self.calls = CallStore.load()
+                    self.onOpenCalls?()
+                }
+            }
+        }
+    }
+
+    private static func wavDuration(_ url: URL) -> TimeInterval? {
+        guard let file = try? AVAudioFile(forReading: url) else { return nil }
+        let rate = file.processingFormat.sampleRate
+        guard rate > 0 else { return nil }
+        return Double(file.length) / rate
     }
 
     // MARK: - Private
@@ -745,6 +954,7 @@ final class AppState: ObservableObject, @unchecked Sendable {
         workerGeneration += 1
         worker.stop()
         logTail = ""
+        WorkerLocator.syncBundledScript()
         guard let located = WorkerLocator.locate() else {
             modelStatus = .missingRuntime("Нажмите «Установить распознавание».")
             statusDetail = "Нажмите «Установить распознавание»."

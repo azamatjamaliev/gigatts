@@ -143,7 +143,12 @@ struct TranscriptSegment: Codable, Hashable, Identifiable {
     var text: String
 
     var speakerTitle: String {
-        speaker == "them" ? "Собеседник" : "Я"
+        if speaker == "me" { return "Я" }
+        if speaker == "them" { return "Собеседник" }
+        if speaker.hasPrefix("them"), let number = Int(speaker.dropFirst(4)), number > 0 {
+            return "Собеседник\(number)"
+        }
+        return "Собеседник"
     }
 
     init(id: UUID = UUID(), start: Double, end: Double, speaker: String, text: String) {
@@ -174,12 +179,24 @@ struct CallRecord: Codable, Identifiable, Hashable {
     var duration: TimeInterval
     var hasSystemAudio: Bool
     var segments: [TranscriptSegment]
+    /// "call" — запись из меню; "meeting" — импорт WAV/m4a.
+    var kind: String
+    var sourceFileName: String?
+
+    var isMeeting: Bool { kind == "meeting" }
 
     var title: String {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "ru_RU")
         formatter.dateFormat = "d MMM, HH:mm"
-        return "Звонок \(formatter.string(from: createdAt))"
+        let when = formatter.string(from: createdAt)
+        if isMeeting {
+            if let name = sourceFileName, !name.isEmpty {
+                return "Встреча · \(name)"
+            }
+            return "Встреча \(when)"
+        }
+        return "Звонок \(when)"
     }
 
     var directory: URL {
@@ -194,6 +211,39 @@ struct CallRecord: Codable, Identifiable, Hashable {
         return segments.map { segment in
             "[\(Format.clock(segment.start))] \(segment.speakerTitle): \(segment.text)"
         }.joined(separator: "\n")
+    }
+
+    init(
+        id: UUID = UUID(),
+        createdAt: Date = Date(),
+        duration: TimeInterval = 0,
+        hasSystemAudio: Bool = false,
+        segments: [TranscriptSegment] = [],
+        kind: String = "call",
+        sourceFileName: String? = nil
+    ) {
+        self.id = id
+        self.createdAt = createdAt
+        self.duration = duration
+        self.hasSystemAudio = hasSystemAudio
+        self.segments = segments
+        self.kind = kind
+        self.sourceFileName = sourceFileName
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case id, createdAt, duration, hasSystemAudio, segments, kind, sourceFileName
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        createdAt = try container.decode(Date.self, forKey: .createdAt)
+        duration = try container.decode(Double.self, forKey: .duration)
+        hasSystemAudio = try container.decode(Bool.self, forKey: .hasSystemAudio)
+        segments = try container.decodeIfPresent([TranscriptSegment].self, forKey: .segments) ?? []
+        kind = try container.decodeIfPresent(String.self, forKey: .kind) ?? "call"
+        sourceFileName = try container.decodeIfPresent(String.self, forKey: .sourceFileName)
     }
 }
 

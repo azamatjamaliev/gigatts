@@ -135,7 +135,21 @@ public sealed class TranscriptSegment
     public string Text { get; set; } = "";
 
     [JsonIgnore]
-    public string SpeakerTitle => Speaker == "them" ? "Собеседник" : "Я";
+    public string SpeakerTitle
+    {
+        get
+        {
+            if (Speaker == "me")
+                return "Я";
+            if (Speaker == "them")
+                return "Собеседник";
+            if (Speaker.StartsWith("them", StringComparison.Ordinal)
+                && int.TryParse(Speaker.AsSpan(4), out var number)
+                && number > 0)
+                return $"Собеседник{number}";
+            return "Собеседник";
+        }
+    }
 
     [JsonIgnore]
     public string Clock => Format.Clock(Start);
@@ -148,9 +162,28 @@ public sealed class CallRecord
     public double Duration { get; set; }
     public bool HasSystemAudio { get; set; }
     public List<TranscriptSegment> Segments { get; set; } = new();
+    /// <summary>"call" — запись из меню; "meeting" — импорт WAV/m4a.</summary>
+    public string Kind { get; set; } = "call";
+    public string? SourceFileName { get; set; }
 
     [JsonIgnore]
-    public string Title => "Звонок " + CreatedAt.ToString("d MMM, HH:mm", CultureInfo.GetCultureInfo("ru-RU"));
+    public bool IsMeeting => Kind == "meeting";
+
+    [JsonIgnore]
+    public string Title
+    {
+        get
+        {
+            var when = CreatedAt.ToString("d MMM, HH:mm", CultureInfo.GetCultureInfo("ru-RU"));
+            if (IsMeeting)
+            {
+                if (!string.IsNullOrEmpty(SourceFileName))
+                    return "Встреча · " + SourceFileName;
+                return "Встреча " + when;
+            }
+            return "Звонок " + when;
+        }
+    }
 
     [JsonIgnore]
     public string Subtitle => Segments.Count == 0

@@ -35,4 +35,24 @@ echo "Python: $PYTHON"
 printf '%s\n' "$ROOT/Worker/.venv/bin/python" > "$SUPPORT/python-path"
 printf '%s\n' "$ROOT/Worker/worker.py" > "$SUPPORT/worker-path"
 
-echo "Воркер готов. Модель v3_e2e_rnnt скачается при первом запуске GigaTTS."
+BUNDLED_MODEL="$ROOT/BundledModels/pyannote-speaker-diarization-community-1"
+MODEL_DIR="$ROOT/dist/models/pyannote-speaker-diarization-community-1"
+CACHE_MODEL="${HOME}/.cache/gigatts/pyannote-speaker-diarization-community-1"
+if [[ -f "$BUNDLED_MODEL/config.yaml" ]]; then
+  export GIGATTS_DIARIZATION_MODEL="$BUNDLED_MODEL"
+  echo "Использую модель разделения спикеров: $BUNDLED_MODEL"
+elif [[ -f "$MODEL_DIR/config.yaml" ]]; then
+  export GIGATTS_DIARIZATION_MODEL="$MODEL_DIR"
+  echo "Использую модель разделения спикеров: $MODEL_DIR"
+elif [[ -f "$CACHE_MODEL/config.yaml" ]]; then
+  export GIGATTS_DIARIZATION_MODEL="$CACHE_MODEL"
+  echo "Использую модель разделения спикеров: $CACHE_MODEL"
+else
+  echo "Скачиваю модель разделения спикеров (pyannote)…"
+  if ! "$ROOT/Worker/.venv/bin/python" -u "$ROOT/Worker/worker.py" --download-diarization; then
+    echo "Разделение спикеров отложено: в сборке нет models/, либо задайте HF_TOKEN (или ~/.cache/gigatts/hf-token)." >&2
+    echo "Диктовка и две дорожки звонка работают без этого. Повтор: Worker/.venv/bin/python -u Worker/worker.py --download-diarization" >&2
+  fi
+fi
+
+echo "Воркер готов. Модель v3_e2e_rnnt скачается при первом запуске GigaПисец."

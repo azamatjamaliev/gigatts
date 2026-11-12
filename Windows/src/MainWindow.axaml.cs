@@ -58,6 +58,9 @@ public partial class MainWindow : Window
         PlayLastButton.IsEnabled = hasCapture;
         RecognizeButton.IsEnabled = hasCapture && _state.ModelReady && _state.Phase == Phase.Idle;
         OpenWavButton.IsEnabled = _state.ModelReady && _state.Phase == Phase.Idle;
+        ImportMeetingButton.IsEnabled = _state.CanImportMeeting;
+        ImportMeetingEmptyButton.IsEnabled = _state.CanImportMeeting;
+        ImportMeetingButton.IsVisible = _state.Section != "debug";
         InsertButton.IsEnabled = _state.DebugResult.Trim().Length > 0;
         DebugPhase.Text = _state.PhaseTitle;
         DebugModel.Text = "Модель: " + _state.ModelTitle;
@@ -70,7 +73,16 @@ public partial class MainWindow : Window
         {
             DetailTitle.Text = call.Title;
             DetailLine.Text = call.CreatedAt.ToString("g") + " · " + Format.Minutes(call.Duration);
-            SystemNote.IsVisible = !call.HasSystemAudio;
+            if (call.IsMeeting)
+            {
+                SystemNote.Text = "Импорт с диктофона: одна дорожка, спикеры — Собеседник1, Собеседник2, …";
+                SystemNote.IsVisible = true;
+            }
+            else
+            {
+                SystemNote.Text = "Дорожка собеседника не записана. Системный звук — это то, что воспроизводит компьютер.";
+                SystemNote.IsVisible = !call.HasSystemAudio;
+            }
             var hasText = call.Segments.Count > 0;
             NoTranscript.IsVisible = !hasText;
             TranscriptScroll.IsVisible = hasText;
@@ -113,6 +125,7 @@ public partial class MainWindow : Window
     void OnCallsTab(object? sender, RoutedEventArgs e) => _state.ShowSection("calls");
     void OnDebugTab(object? sender, RoutedEventArgs e) => _state.ShowSection("debug");
     void OnSettings(object? sender, RoutedEventArgs e) => _state.OpenSettings();
+    void OnImportMeeting(object? sender, RoutedEventArgs e) => _state.ImportMeetingRecording();
 
     void OnListen(object? sender, RoutedEventArgs e)
     {
@@ -180,6 +193,22 @@ public partial class MainWindow : Window
         var path = files.Count > 0 ? files[0].TryGetLocalPath() : null;
         if (!string.IsNullOrEmpty(path))
             _state.TranscribeFile(path);
+    }
+
+    public async Task<string?> PickMeetingFileAsync()
+    {
+        var files = await StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+        {
+            Title = "Открыть запись встречи",
+            AllowMultiple = false,
+            FileTypeFilter =
+            [
+                new FilePickerFileType("Запись встречи") { Patterns = ["*.wav", "*.m4a"] },
+                new FilePickerFileType("WAV") { Patterns = ["*.wav"] },
+                new FilePickerFileType("M4A") { Patterns = ["*.m4a"] }
+            ]
+        });
+        return files.Count > 0 ? files[0].TryGetLocalPath() : null;
     }
 
     void OnInsert(object? sender, RoutedEventArgs e) => _state.InsertDebugResult();

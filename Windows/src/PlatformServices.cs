@@ -150,7 +150,7 @@ static class LinuxAutostart
             "[Desktop Entry]\n" +
             "Type=Application\n" +
             "Version=1.0\n" +
-            "Name=GigaTTS\n" +
+            "Name=GigaПисец\n" +
             "Comment=Локальная диктовка и расшифровка звонков\n" +
             "Exec=" + Quote(exe) + "\n" +
             "Terminal=false\n" +

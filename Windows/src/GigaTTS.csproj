@@ -7,7 +7,7 @@
     <RootNamespace>GigaTTS</RootNamespace>
     <AssemblyName>GigaTTS</AssemblyName>
     <Version>1.0.0</Version>
-    <Product>GigaTTS</Product>
+    <Product>GigaПисец</Product>
     <Description>Локальная диктовка и расшифровка звонков</Description>
     <ApplicationManifest Condition="!$(RuntimeIdentifier.StartsWith('linux'))">app.manifest</ApplicationManifest>
     <ApplicationIcon Condition="!$(RuntimeIdentifier.StartsWith('linux'))">Assets\app.ico</ApplicationIcon>

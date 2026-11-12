@@ -17,6 +17,12 @@ struct MainWindow: View {
                 .pickerStyle(.segmented)
                 .frame(width: 240)
                 Spacer()
+                if appState.mainSection == .calls {
+                    Button("Открыть запись встречи…") {
+                        appState.importMeetingRecording()
+                    }
+                    .disabled(!(appState.phase == .idle && appState.modelStatus.isReady))
+                }
                 Button {
                     appState.openSettings()
                 } label: {
@@ -63,15 +69,19 @@ struct CallsView: View {
                 CallDetail(call: call, player: player)
                     .environmentObject(appState)
             } else {
-                VStack(spacing: 8) {
+                VStack(spacing: 12) {
                     Image(systemName: "phone")
                         .font(.system(size: 36))
                         .foregroundStyle(.secondary)
                     Text("Нет записи")
                         .font(.title3)
-                    Text("Начните запись звонка из меню в трее. Сохраняются микрофон и системный звук.")
+                    Text("Начните запись звонка из меню в трее или откройте WAV/m4a.")
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
+                    Button("Открыть запись встречи…") {
+                        appState.importMeetingRecording()
+                    }
+                    .disabled(!(appState.phase == .idle && appState.modelStatus.isReady))
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
@@ -137,7 +147,11 @@ private struct CallDetail: View {
                 }
             }
 
-            if !call.hasSystemAudio {
+            if call.isMeeting {
+                Text("Импорт с диктофона: одна дорожка, спикеры — Собеседник1, Собеседник2, …")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+            } else if !call.hasSystemAudio {
                 Text("Дорожка собеседника не записана. В настройках разрешите системный звук: видео экрана не сохраняется.")
                     .font(.callout)
                     .foregroundStyle(.secondary)

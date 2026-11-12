@@ -127,6 +127,7 @@ public sealed class AppState : Observable
     public bool CanInstall => !IsInstalling && Phase == Phase.Idle && ModelKind is not (ModelKind.Starting or ModelKind.Loading);
     public bool CanDictate => Phase == Phase.Dictating || (Phase == Phase.Idle && ModelReady && MicrophoneAllowed);
     public bool CanToggleCall => Phase == Phase.RecordingCall || (Phase == Phase.Idle && ModelReady);
+    public bool CanImportMeeting => Phase == Phase.Idle && ModelReady;
     public bool ShouldCancelWithEscape => Phase == Phase.Dictating || _armed;
     public string CaptureSummary => string.IsNullOrEmpty(LastCapturePath)
         ? "ещё нет"
@@ -145,7 +146,7 @@ public sealed class AppState : Observable
         RefreshLogin();
         RefreshPermissions();
         StartWorker();
-        Note("GigaTTS запущен. log=" + AppLog.Shared.FilePath);
+        Note("GigaПисец запущен. log=" + AppLog.Shared.FilePath);
         if (!HotkeyAllowed && HotkeyFailure is { Length: > 0 } failure)
         {
             LastError = failure;
@@ -337,7 +338,7 @@ public sealed class AppState : Observable
             return;
         }
         LastError = string.IsNullOrEmpty(HotkeyFailure)
-            ? "Не удалось включить глобальную клавишу. Перезапустите GigaTTS."
+            ? "Не удалось включить глобальную клавишу. Перезапустите GigaПисец."
             : HotkeyFailure;
         Raise(nameof(LastError));
     }
@@ -507,7 +508,207 @@ public sealed class AppState : Observable
         }
         SetPhase(Phase.TranscribingCall);
         _overlay.ShowTranscribing();
-        _ = TranscribeCall(record, _generation);
+        if (record.IsMeeting)
+            _ = TranscribeMeeting(record, _generation);
+        else
+            _ = TranscribeCall(record, _generation);
+    }
+
+    public void ImportMeetingRecording()
+    {
+        if (Phase != Phase.Idle)
+        {
+            Flash("Дождитесь окончания текущей операции");
+            return;
+        }
+        if (!ModelReady)
+        {
+            Flash(ModelTitle);
+            return;
+        }
+        _ = PickAndImportMeeting();
+    }
+
+    /// <summary>UI supplies a local WAV/m4a path (tray menu has no StorageProvider).</summary>
+    public Func<Task<string?>>? PickMeetingFileAsync { get; set; }
+
+    async Task PickAndImportMeeting()
+    {
+        string? path = null;
+        try
+        {
+            if (PickMeetingFileAsync != null)
+                path = await PickMeetingFileAsync();
+        }
+        catch (Exception ex)
+        {
+            OnUi(() =>
+            {
+                LastError = ex.Message;
+                Raise(nameof(LastError));
+                Flash("Не удалось открыть файл");
+            });
+            return;
+        }
+        if (string.IsNullOrEmpty(path))
+            return;
+        BeginMeetingImport(path);
+    }
+
+    void BeginMeetingImport(string path)
+    {
+        var name = Path.GetFileName(path);
+        var record = new CallRecord
+        {
+            Id = Guid.NewGuid(),
+            CreatedAt = DateTime.Now,
+            Kind = "meeting",
+            SourceFileName = name,
+            HasSystemAudio = false
+        };
+        try
+        {
+            Directory.CreateDirectory(record.Directory);
+            var ext = Path.GetExtension(path);
+            var staged = Path.Combine(record.Directory, "source" + ext);
+            File.Copy(path, staged, overwrite: true);
+            CallStore.Save(record);
+            ReloadCalls();
+            SetPhase(Phase.TranscribingCall);
+            _overlay.ShowTranscribing();
+            Note($"Импорт встречи. file={path} staged={staged}");
+            _ = RunMeetingImport(record, staged, _generation);
+        }
+        catch (Exception ex)
+        {
+            CallStore.Delete(record);
+            LastError = ex.Message;
+            Raise(nameof(LastError));
+            Flash("Не удалось открыть файл");
+            Note("Ошибка копирования записи встречи: " + ex.Message, "ERROR");
+        }
+    }
+
+    async Task RunMeetingImport(CallRecord record, string sourcePath, int generation)
+    {
+        try
+        {
+            var (segments, duration) = await RequestMeeting(sourcePath, record.MicPath);
+            OnUi(() =>
+            {
+                if (generation != _generation)
+                    return;
+                FinishMeeting(record.Id, segments, duration);
+            });
+        }
+        catch (Exception ex)
+        {
+            OnUi(() =>
+            {
+                if (generation != _generation)
+                    return;
+                SetPhase(Phase.Idle);
+                _overlay.Hide();
+                LastError = ex.Message;
+                Raise(nameof(LastError));
+                Flash("Не удалось расшифровать запись");
+                Note("Ошибка импорта встречи: " + ex.Message, "ERROR");
+                ReloadCalls();
+                ShowSection("calls");
+            });
+        }
+    }
+
+    async Task TranscribeMeeting(CallRecord record, int generation)
+    {
+        var path = record.MicPath;
+        if (!File.Exists(path))
+        {
+            var fallback = Directory.Exists(record.Directory)
+                ? Directory.GetFiles(record.Directory, "source.*").FirstOrDefault()
+                : null;
+            path = fallback ?? path;
+        }
+        if (!File.Exists(path))
+        {
+            OnUi(() =>
+            {
+                if (generation != _generation)
+                    return;
+                SetPhase(Phase.Idle);
+                _overlay.Hide();
+                LastError = "Файл записи встречи не найден";
+                Raise(nameof(LastError));
+                Flash(LastError);
+            });
+            return;
+        }
+        try
+        {
+            var (segments, duration) = await RequestMeeting(path, outWav: null);
+            OnUi(() =>
+            {
+                if (generation != _generation)
+                    return;
+                FinishMeeting(record.Id, segments, duration);
+            });
+        }
+        catch (Exception ex)
+        {
+            OnUi(() =>
+            {
+                if (generation != _generation)
+                    return;
+                SetPhase(Phase.Idle);
+                _overlay.Hide();
+                LastError = ex.Message;
+                Raise(nameof(LastError));
+                Flash("Не удалось расшифровать запись");
+                ReloadCalls();
+                ShowSection("calls");
+            });
+        }
+    }
+
+    void FinishMeeting(Guid id, List<TranscriptSegment> segments, double duration)
+    {
+        SetPhase(Phase.Idle);
+        _overlay.Hide();
+        var record = CallStore.Load().FirstOrDefault(item => item.Id == id);
+        if (record != null)
+        {
+            record.Segments = segments;
+            if (duration > 0)
+                record.Duration = duration;
+            CallStore.Save(record);
+        }
+        ReloadCalls();
+        if (segments.Count == 0)
+            Flash("В записи не найдена речь");
+        else
+        {
+            LastError = null;
+            Raise(nameof(LastError));
+        }
+        ShowSection("calls");
+    }
+
+    async Task<(List<TranscriptSegment> Segments, double Duration)> RequestMeeting(string path, string? outWav)
+    {
+        var body = new JsonObject
+        {
+            ["cmd"] = "transcribe_file",
+            ["path"] = path
+        };
+        if (!string.IsNullOrEmpty(outWav))
+            body["out_wav"] = outWav;
+        using var document = await _worker.RequestAsync(body);
+        var segments = ParseSegments(document.RootElement);
+        var duration = 0.0;
+        if (document.RootElement.TryGetProperty("duration", out var durationNode)
+            && durationNode.ValueKind == System.Text.Json.JsonValueKind.Number)
+            duration = durationNode.GetDouble();
+        return (segments, duration);
     }
 
     public void RetranscribeLastCapture()
@@ -1109,6 +1310,7 @@ public sealed class AppState : Observable
         Raise(nameof(CanInstall));
         Raise(nameof(CanDictate));
         Raise(nameof(CanToggleCall));
+        Raise(nameof(CanImportMeeting));
         Raise(nameof(CaptureSummary));
         QueueMenu();
     }

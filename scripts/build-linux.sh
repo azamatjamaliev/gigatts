@@ -41,12 +41,15 @@ dotnet publish "$ROOT/Windows/src/GigaTTS.csproj" \
   -p:DebugSymbols=false
 cp "$ROOT/Worker/worker.py" "$OUT/worker.py"
 cp "$ROOT/Worker/requirements.txt" "$OUT/requirements.txt"
+cp "$ROOT/NOTICE" "$OUT/NOTICE"
+"$ROOT/scripts/bundle-diarization-model.sh" \
+  "$OUT/models/pyannote-speaker-diarization-community-1"
 cp "$ROOT/Windows/src/Assets/icon.png" "$OUT/icon.png"
 cat > "$OUT/GigaTTS.desktop" <<'EOF'
 [Desktop Entry]
 Type=Application
 Version=1.0
-Name=GigaTTS
+Name=GigaПисец
 Comment=Локальная диктовка и расшифровка звонков
 Exec=GigaTTS
 Icon=icon.png

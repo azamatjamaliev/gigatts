@@ -15,12 +15,15 @@ struct GigaTTSApp: App {
         }
         .menuBarExtraStyle(.menu)
 
-        Settings {
+        // Dedicated window (not Settings scene): showSettingsWindow: is unreliable for LSUIElement / .accessory.
+        Window("Настройки", id: "settings") {
             SettingsView()
                 .environmentObject(appState)
         }
+        .windowResizability(.contentSize)
+        .defaultSize(width: 560, height: 640)
 
-        Window("GigaTTS", id: "main") {
+        Window("GigaПисец", id: "main") {
             MainWindow()
                 .environmentObject(appState)
         }
@@ -42,12 +45,16 @@ private struct StatusItemLabel: View {
         Image(systemName: appState.symbolName)
             .onAppear {
                 appState.onNeedOnboarding = {
-                    NSApp.activate()
+                    appState.revealForUI()
                     openWindow(id: "onboarding")
                 }
                 appState.onOpenCalls = {
-                    NSApp.activate()
+                    appState.revealForUI()
                     openWindow(id: "main")
+                }
+                appState.onOpenSettings = {
+                    appState.revealForUI()
+                    openWindow(id: "settings")
                 }
                 appState.bootstrap()
             }
@@ -83,6 +90,11 @@ struct MenuContent: View {
         }
         .disabled(!canToggleCall)
 
+        Button("Открыть запись встречи…") {
+            appState.importMeetingRecording()
+        }
+        .disabled(!canImportMeeting)
+
         if !appState.lastTranscript.isEmpty {
             Divider()
             Button("Скопировать последнюю фразу") {
@@ -106,8 +118,8 @@ struct MenuContent: View {
         }
 
         Divider()
-        Button("GigaTTS…") {
-            NSApp.activate()
+        Button("GigaПисец…") {
+            appState.revealForUI()
             openWindow(id: "main")
         }
         Button("Настройки…") {
@@ -138,5 +150,9 @@ struct MenuContent: View {
     private var canToggleCall: Bool {
         if case .recordingCall = appState.phase { return true }
         return appState.phase == .idle && appState.modelStatus.isReady
+    }
+
+    private var canImportMeeting: Bool {
+        appState.phase == .idle && appState.modelStatus.isReady
     }
 }

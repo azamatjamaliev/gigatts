@@ -88,7 +88,7 @@ struct OnboardingView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
-                Text("GigaTTS")
+                Text("GigaПисец")
                     .font(.largeTitle.bold())
                 Text("Локальная диктовка и расшифровка звонков. Речь распознаёт GigaAM v3 на этом Mac и никуда не отправляется.")
                     .foregroundStyle(.secondary)
@@ -125,7 +125,7 @@ struct WorkerInstallControls: View {
                 appState.installWorker()
             }
             .disabled(!appState.canInstallWorker)
-            Text("Ставит Python, ffmpeg, PyTorch и GigaAM в папку данных пользователя. Приложение можно перенести в «Программы»: кнопка берёт файлы из самого GigaTTS.app. Интернет нужен только для загрузки.")
+            Text("Ставит Python, ffmpeg, PyTorch, GigaAM и pyannote в папку данных пользователя. Приложение можно перенести в «Программы»: кнопка берёт файлы из самого GigaTTS.app. Интернет нужен для GigaAM. Модель разделения спикеров уже в приложении; HF_TOKEN нужен только если её нет в сборке.")
                 .font(.callout)
                 .foregroundStyle(.secondary)
             if !appState.installLog.isEmpty {

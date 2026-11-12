@@ -4,11 +4,11 @@
 
 [Setup]
 AppId={{7C4E2A18-6B5D-4F0A-9E33-1A2B3C4D5E6F}
-AppName=GigaTTS
+AppName=GigaПисец
 AppVersion={#AppVersion}
-AppPublisher=GigaTTS
+AppPublisher=GigaПисец
 DefaultDirName={localappdata}\Programs\GigaTTS
-DefaultGroupName=GigaTTS
+DefaultGroupName=GigaПисец
 DisableProgramGroupPage=yes
 OutputDir=..\dist
 OutputBaseFilename=GigaTTS-Setup
@@ -25,11 +25,11 @@ CloseApplications=force
 Source: "..\dist\GigaTTS-windows\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
-Name: "{group}\GigaTTS"; Filename: "{app}\GigaTTS.exe"
-Name: "{userdesktop}\GigaTTS"; Filename: "{app}\GigaTTS.exe"; Tasks: desktopicon
+Name: "{group}\GigaПисец"; Filename: "{app}\GigaTTS.exe"
+Name: "{userdesktop}\GigaПисец"; Filename: "{app}\GigaTTS.exe"; Tasks: desktopicon
 
 [Tasks]
 Name: "desktopicon"; Description: "Создать значок на рабочем столе"
 
 [Run]
-Filename: "{app}\GigaTTS.exe"; Description: "Запустить GigaTTS"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\GigaTTS.exe"; Description: "Запустить GigaПисец"; Flags: nowait postinstall skipifsilent

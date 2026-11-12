@@ -23,10 +23,12 @@ public class WorkerScriptTests
     }
 
     [Fact]
-    public void Requirements_list_truststore()
+    public void Requirements_list_truststore_and_pyannote()
     {
         var text = File.ReadAllText(RepoFiles.Find("Worker/requirements.txt"));
         Assert.Contains("truststore", text);
+        Assert.Contains("pyannote.audio", text);
+        Assert.Contains("huggingface_hub", text);
     }
 
     [Fact]

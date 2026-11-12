@@ -2,3 +2,5 @@ torch>=2.6
 torchaudio>=2.6
 gigaam @ git+https://github.com/salute-developers/GigaAM.git
 truststore>=0.9
+pyannote.audio>=3.3
+huggingface_hub>=0.24

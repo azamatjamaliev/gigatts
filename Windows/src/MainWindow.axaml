@@ -1,7 +1,7 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         x:Class="GigaTTS.MainWindow"
-        Title="GigaTTS"
+        Title="GigaПисец"
         Width="980" Height="640"
         MinWidth="860" MinHeight="520"
         WindowStartupLocation="CenterScreen">
@@ -11,7 +11,10 @@
         <Button x:Name="CallsTab" Content="Звонки" Click="OnCallsTab"/>
         <Button x:Name="DebugTab" Content="Отладка" Click="OnDebugTab"/>
       </StackPanel>
-      <Button Grid.Column="2" Content="Настройки" Click="OnSettings"/>
+      <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8">
+        <Button x:Name="ImportMeetingButton" Content="Открыть запись встречи…" Click="OnImportMeeting"/>
+        <Button Content="Настройки" Click="OnSettings"/>
+      </StackPanel>
     </Grid>
     <Border Grid.Row="0" Height="1" VerticalAlignment="Bottom" Background="#33000000"/>
 
@@ -27,10 +30,12 @@
         </ListBox.ItemTemplate>
       </ListBox>
       <Grid Grid.Column="1" Margin="20">
-        <StackPanel x:Name="EmptyState" Spacing="8" HorizontalAlignment="Center" VerticalAlignment="Center">
+        <StackPanel x:Name="EmptyState" Spacing="12" HorizontalAlignment="Center" VerticalAlignment="Center">
           <TextBlock Text="Нет записи" FontSize="20" HorizontalAlignment="Center"/>
           <TextBlock Opacity="0.7" TextWrapping="Wrap" TextAlignment="Center" MaxWidth="420"
-                     Text="Начните запись звонка из меню значка GigaTTS. Сохраняются микрофон и системный звук."/>
+                     Text="Начните запись звонка из меню значка GigaПисец или откройте WAV/m4a."/>
+          <Button x:Name="ImportMeetingEmptyButton" Content="Открыть запись встречи…"
+                  HorizontalAlignment="Center" Click="OnImportMeeting"/>
         </StackPanel>
         <DockPanel x:Name="Detail" IsVisible="False">
           <StackPanel DockPanel.Dock="Top" Spacing="8">

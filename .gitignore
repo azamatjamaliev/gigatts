@@ -8,3 +8,11 @@ Worker/.venv/
 **/obj/
 .vs/
 *.user
+
+# HF tokens must never be committed (e.g. ~/.cache/gigatts/hf-token copies)
+**/hf-token
+**/.cache/
+
+# BundledModels/ is intentionally tracked (~31 MB pyannote weights for builds)
+!BundledModels/
+!BundledModels/**

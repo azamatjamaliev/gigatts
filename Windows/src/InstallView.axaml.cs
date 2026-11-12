@@ -11,7 +11,7 @@ public partial class InstallView : UserControl
     {
         InitializeComponent();
         if (OperatingSystem.IsLinux())
-            Hint.Text = "Ставит Python, Git, ffmpeg, PyTorch и GigaAM в папку данных (~/.local/share/GigaTTS). На Ubuntu кнопка запускает apt и может запросить пароль администратора. Интернет нужен для загрузки. Видеодрайвер NVIDIA этот шаг не ставит.";
+            Hint.Text = "Ставит Python, Git, ffmpeg, PyTorch, GigaAM и pyannote в папку данных (~/.local/share/GigaTTS). На Ubuntu кнопка запускает apt и может запросить пароль администратора. Интернет нужен для GigaAM. Модель разделения спикеров уже в приложении; HF_TOKEN нужен только если её нет в сборке. Видеодрайвер NVIDIA этот шаг не ставит.";
     }
 
     protected override void OnDataContextChanged(EventArgs e)

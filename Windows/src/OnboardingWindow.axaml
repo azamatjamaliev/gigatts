@@ -8,7 +8,7 @@
         WindowStartupLocation="CenterScreen">
   <ScrollViewer>
     <StackPanel Margin="24" Spacing="16">
-      <TextBlock Text="GigaTTS" FontSize="32" FontWeight="Bold"/>
+      <TextBlock Text="GigaПисец" FontSize="32" FontWeight="Bold"/>
       <TextBlock Opacity="0.7" TextWrapping="Wrap"
                  Text="Локальная диктовка и расшифровка звонков. Речь распознаёт GigaAM v3 на этом компьютере и никуда не отправляется."/>
       <TextBlock TextWrapping="Wrap"
@@ -16,7 +16,7 @@
       <local:InstallView/>
       <local:PermissionView/>
       <TextBlock Opacity="0.7" TextWrapping="Wrap"
-                 Text="Запись звонка включается отдельно из меню значка GigaTTS. Для голоса собеседника пишется звук, который воспроизводит компьютер. Видео экрана не сохраняется. Предупредите собеседника."/>
+                 Text="Запись звонка включается отдельно из меню значка GigaПисец. Для голоса собеседника пишется звук, который воспроизводит компьютер. Видео экрана не сохраняется. Предупредите собеседника."/>
       <Button Content="Продолжить" HorizontalAlignment="Right" Click="OnContinue"/>
     </StackPanel>
   </ScrollViewer>

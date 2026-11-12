@@ -10,38 +10,101 @@ enum TextInserter {
         case failed
     }
 
+    /// Prevents a second insert if finishDictation / UI somehow call insert twice quickly.
+    private static var lastInsertAt: CFAbsoluteTime = 0
+    private static var lastInsertText: String = ""
+
     static func insert(_ text: String) -> Outcome {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return .failed }
         if IsSecureEventInputEnabled() {
             return .secureSkipped
         }
-        switch insertViaAccessibility(trimmed) {
-        case .inserted:
-            return .inserted
-        case .secureSkipped:
+        let element = focusedElement()
+        if let element, isSecureTextField(element) {
             return .secureSkipped
-        case .failed:
-            return insertViaPasteboard(trimmed) ? .inserted : .failed
         }
+
+        let now = CFAbsoluteTimeGetCurrent()
+        if trimmed == lastInsertText, now - lastInsertAt < 0.85 {
+            AppLog.shared.write("INFO", "Повторная вставка пропущена (защита от дубля).")
+            return .inserted
+        }
+
+        let before = element.flatMap { stringAttribute($0, kAXValueAttribute as CFString) }
+        let range = element.flatMap { selectedRange($0) }
+
+        // Single path first: clipboard + one ⌘V.
+        // Telegram accepts both ⌘V and AXSelectedText; if pasteLanded is a false negative
+        // (AXValue lags / empty), the old AX fallback inserted a second copy.
+        if insertViaPasteboard(trimmed) {
+            if let element, let before {
+                if pasteLanded(trimmed, before: before, range: range, element: element) {
+                    markInserted(trimmed)
+                    AppLog.shared.write("INFO", "Вставка через ⌘V.")
+                    return .inserted
+                }
+                if shouldTrustPasteWithoutAccessibility(before: before) {
+                    markInserted(trimmed)
+                    AppLog.shared.write(
+                        "INFO",
+                        "Вставка через ⌘V (AX пропущен — иначе дубль в Telegram и похожих полях)."
+                    )
+                    return .inserted
+                }
+                // Last look before AX: paste may have landed after the first poll window.
+                if pasteLanded(trimmed, before: before, range: range, element: element) {
+                    markInserted(trimmed)
+                    AppLog.shared.write("INFO", "Вставка через ⌘V.")
+                    return .inserted
+                }
+                AppLog.shared.write("INFO", "⌘V не изменила поле.")
+                let outcome = insertViaAccessibility(trimmed, element: element, before: before, range: range)
+                if outcome == .inserted { markInserted(trimmed) }
+                return outcome
+            }
+            markInserted(trimmed)
+            AppLog.shared.write("INFO", "Вставка через ⌘V.")
+            return .inserted
+        }
+        guard let element else { return .failed }
+        let outcome = insertViaAccessibility(trimmed, element: element, before: before, range: range)
+        if outcome == .inserted { markInserted(trimmed) }
+        return outcome
     }
 
-    private static func insertViaAccessibility(_ text: String) -> Outcome {
-        let system = AXUIElementCreateSystemWide()
-        var focused: CFTypeRef?
-        let copyResult = AXUIElementCopyAttributeValue(system, kAXFocusedUIElementAttribute as CFString, &focused)
-        guard copyResult == .success, let focused else { return .failed }
-        guard CFGetTypeID(focused) == AXUIElementGetTypeID() else { return .failed }
-        let element = focused as! AXUIElement
+    private static func markInserted(_ text: String) {
+        lastInsertText = text
+        lastInsertAt = CFAbsoluteTimeGetCurrent()
+    }
 
-        var role: CFTypeRef?
-        AXUIElementCopyAttributeValue(element, kAXRoleAttribute as CFString, &role)
-        if let role = role as? String, role == "AXSecureTextField" {
-            return .secureSkipped
+    /// Prefer clipboard paste alone when AX verification is unreliable or the front app
+    /// is known to accept both paste and AX (double-insert).
+    private static func shouldTrustPasteWithoutAccessibility(before: String) -> Bool {
+        if frontmostLooksLikeTelegram() { return true }
+        // Empty AXValue is common for some composers while ⌘V still works; AX then duplicates.
+        if before.isEmpty { return true }
+        return false
+    }
+
+    private static func frontmostLooksLikeTelegram() -> Bool {
+        guard let id = NSWorkspace.shared.frontmostApplication?.bundleIdentifier?.lowercased() else {
+            return false
         }
+        return id.contains("telegram")
+    }
 
-        let before = stringAttribute(element, kAXValueAttribute as CFString)
-        let range = selectedRange(element)
+    private static func insertViaAccessibility(
+        _ text: String,
+        element: AXUIElement,
+        before: String?,
+        range: NSRange?
+    ) -> Outcome {
+        // Paste may have landed while we decided to fall back — never insert twice.
+        if let before, alreadyPresent(text, before: before, range: range, element: element) {
+            AppLog.shared.write("INFO", "Текст уже в поле, Accessibility пропущен.")
+            return .inserted
+        }
         let setResult = AXUIElementSetAttributeValue(element, kAXSelectedTextAttribute as CFString, text as CFTypeRef)
         if setResult == .success {
             AppLog.shared.write("INFO", "Вставка через Accessibility.")
@@ -49,11 +112,53 @@ enum TextInserter {
         }
         if landed(text, before: before, range: range, element: element)
             || (before != nil && waitAndLanded(text, before: before, range: range, element: element)) {
-            AppLog.shared.write("INFO", "Текст уже в поле после Accessibility (код \(setResult.rawValue)), ⌘V пропущено.")
+            AppLog.shared.write("INFO", "Текст уже в поле после Accessibility (код \(setResult.rawValue)).")
             return .inserted
         }
         AppLog.shared.write("INFO", "Accessibility не изменила поле (код \(setResult.rawValue)).")
         return .failed
+    }
+
+    private static func focusedElement() -> AXUIElement? {
+        let system = AXUIElementCreateSystemWide()
+        var focused: CFTypeRef?
+        let copyResult = AXUIElementCopyAttributeValue(system, kAXFocusedUIElementAttribute as CFString, &focused)
+        guard copyResult == .success, let focused else { return nil }
+        guard CFGetTypeID(focused) == AXUIElementGetTypeID() else { return nil }
+        return (focused as! AXUIElement)
+    }
+
+    private static func isSecureTextField(_ element: AXUIElement) -> Bool {
+        var role: CFTypeRef?
+        AXUIElementCopyAttributeValue(element, kAXRoleAttribute as CFString, &role)
+        return (role as? String) == "AXSecureTextField"
+    }
+
+    private static func pasteLanded(_ text: String, before: String, range: NSRange?, element: AXUIElement) -> Bool {
+        // ~0.4s: Telegram / Electron often update AX after the synthetic ⌘V event.
+        for _ in 0..<8 {
+            Thread.sleep(forTimeInterval: 0.05)
+            if landed(text, before: before, range: range, element: element) { return true }
+            if selectionAdvanced(text, from: range, element: element) { return true }
+        }
+        return false
+    }
+
+    private static func alreadyPresent(
+        _ text: String,
+        before: String,
+        range: NSRange?,
+        element: AXUIElement
+    ) -> Bool {
+        landed(text, before: before, range: range, element: element)
+            || selectionAdvanced(text, from: range, element: element)
+    }
+
+    private static func selectionAdvanced(_ text: String, from range: NSRange?, element: AXUIElement) -> Bool {
+        guard let range, let after = selectedRange(element) else { return false }
+        let inserted = (text as NSString).length
+        guard inserted > 0 else { return false }
+        return after.length == 0 && after.location == range.location + inserted
     }
 
     private static func waitAndLanded(_ text: String, before: String?, range: NSRange?, element: AXUIElement) -> Bool {
@@ -70,9 +175,16 @@ enum TextInserter {
         if let range, let expected = replacing(before, range: range, with: text), after == expected {
             return true
         }
+        let beforeCount = occurrenceCount(of: text, in: before)
+        let afterCount = occurrenceCount(of: text, in: after)
+        // ≥ +1 covers a successful paste; ≥ +2 means already duplicated — still treat as landed
+        // so we do not call Accessibility and make it worse.
+        if afterCount >= beforeCount + 1 {
+            return true
+        }
         let added = (text as NSString).length
         guard added > 0, (after as NSString).length == (before as NSString).length + added else { return false }
-        return occurrenceCount(of: text, in: after) == occurrenceCount(of: text, in: before) + 1
+        return false
     }
 
     private static func replacing(_ value: String, range: NSRange, with text: String) -> String? {
@@ -121,7 +233,8 @@ enum TextInserter {
         pasteboard.clearContents()
         guard pasteboard.setString(text, forType: .string) else { return false }
         let marker = pasteboard.changeCount
-        AppLog.shared.write("INFO", "Вставка через ⌘V.")
+        // Brief settle so the target reads the new clipboard before ⌘V (Telegram is sensitive).
+        Thread.sleep(forTimeInterval: 0.03)
         postCommandV()
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
             if NSPasteboard.general.changeCount == marker {
@@ -138,6 +251,7 @@ enum TextInserter {
               let up = CGEvent(keyboardEventSource: source, virtualKey: keyCode, keyDown: false) else {
             return
         }
+        // Explicit flags only — avoid Option/Shift left over from the dictation hotkey.
         down.flags = .maskCommand
         up.flags = .maskCommand
         down.post(tap: .cghidEventTap)

@@ -6,6 +6,23 @@ enum WorkerLocator {
         var script: URL
     }
 
+    /// Keep Application Support worker.py aligned with the copy inside the .app
+    /// (new RPC commands like transcribe_file after an app update).
+    static func syncBundledScript() {
+        guard let source = bundledWorkerURL() else { return }
+        let destination = AppPaths.support.appendingPathComponent("worker.py")
+        if source.standardizedFileURL == destination.standardizedFileURL { return }
+        do {
+            try FileManager.default.createDirectory(at: AppPaths.support, withIntermediateDirectories: true)
+            if FileManager.default.fileExists(atPath: destination.path) {
+                try FileManager.default.removeItem(at: destination)
+            }
+            try FileManager.default.copyItem(at: source, to: destination)
+        } catch {
+            // Keep the previously installed script if refresh fails.
+        }
+    }
+
     static func locate() -> Located? {
         let environment = ProcessInfo.processInfo.environment
         if let python = environment["GIGATTS_PYTHON"], let script = environment["GIGATTS_WORKER"] {
@@ -65,12 +82,48 @@ enum WorkerLocator {
         return nil
     }
 
+    static let diarizationDirName = "pyannote-speaker-diarization-community-1"
+
     static func bundledWorkerURL() -> URL? {
         bundledResource("worker.py") ?? developmentFile("Worker/worker.py")
     }
 
     static func bundledRequirementsURL() -> URL? {
         bundledResource("requirements.txt") ?? developmentFile("Worker/requirements.txt")
+    }
+
+    /// Packaged pyannote weights inside the .app (or dist/models / cache while developing).
+    static func bundledDiarizationModelURL() -> URL? {
+        let relative = "models/\(diarizationDirName)"
+        if let resource = Bundle.main.resourceURL {
+            let url = resource.appendingPathComponent(relative)
+            if diarizationReady(url) { return url }
+        }
+        if let url = developmentFile("dist/models/\(diarizationDirName)"), diarizationReady(url) {
+            return url
+        }
+        let cache = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".cache/gigatts/\(diarizationDirName)")
+        if diarizationReady(cache) { return cache }
+        return nil
+    }
+
+    static func applyDiarizationEnvironment(_ environment: inout [String: String]) {
+        if environment["GIGATTS_DIARIZATION_MODEL"]?.isEmpty == false { return }
+        if let url = bundledDiarizationModelURL() {
+            environment["GIGATTS_DIARIZATION_MODEL"] = url.path
+        }
+    }
+
+    static func diarizationReady(_ root: URL) -> Bool {
+        let required = [
+            "config.yaml",
+            "embedding/pytorch_model.bin",
+            "segmentation/pytorch_model.bin",
+            "plda/plda.npz",
+            "plda/xvec_transform.npz"
+        ]
+        return required.allSatisfy { FileManager.default.fileExists(atPath: root.appendingPathComponent($0).path) }
     }
 
     /// Resources inside the .app. This stays valid after the app is moved to /Applications.
@@ -143,6 +196,9 @@ enum WorkerInstaller {
     torch>=2.6
     torchaudio>=2.6
     gigaam @ git+https://github.com/salute-developers/GigaAM.git
+    truststore>=0.9
+    pyannote.audio>=3.3
+    huggingface_hub>=0.24
     """
 
     static func install(log: @escaping (String) -> Void) async throws {
@@ -185,9 +241,22 @@ enum WorkerInstaller {
             log("Создаю локальное окружение…\n")
             try await run(basePython, ["-m", "venv", AppPaths.support.appendingPathComponent("venv").path], log: log)
         }
-        log("Устанавливаю PyTorch и GigaAM. Первый раз это занимает несколько минут…\n")
+        log("Устанавливаю PyTorch, GigaAM и pyannote. Первый раз это занимает несколько минут…\n")
         try await run(venvPython, ["-u", "-m", "pip", "install", "--upgrade", "pip"], log: log)
         try await run(venvPython, ["-u", "-m", "pip", "install", "-r", requirements.path], log: log)
+        if let bundled = WorkerLocator.bundledDiarizationModelURL() {
+            log("Использую встроенную модель разделения спикеров: \(bundled.path)\n")
+        } else {
+            log("Скачиваю модель разделения спикеров (pyannote)…\n")
+            do {
+                try await run(venvPython, ["-u", installedWorker.path, "--download-diarization"], log: log)
+            } catch {
+                log(
+                    "Разделение спикеров отложено: в сборке нет models/, либо задайте HF_TOKEN "
+                        + "(или ~/.cache/gigatts/hf-token). Диктовка и две дорожки звонка работают без этого.\n"
+                )
+            }
+        }
 
         try (venvPython.path + "\n").write(
             to: AppPaths.support.appendingPathComponent("python-path"),
@@ -206,7 +275,7 @@ enum WorkerInstaller {
         if let url = WorkerLocator.bundledWorkerURL() {
             return url
         }
-        throw InstallError.message("В приложении нет worker.py. Пересоберите GigaTTS.")
+        throw InstallError.message("В приложении нет worker.py. Пересоберите GigaПисец.")
     }
 
     private static func requirementsFile() throws -> URL {
@@ -268,6 +337,7 @@ enum WorkerInstaller {
             environment["PYTHONIOENCODING"] = "utf-8"
             environment["PIP_DISABLE_PIP_VERSION_CHECK"] = "1"
             environment["GIT_TERMINAL_PROMPT"] = "0"
+            WorkerLocator.applyDiarizationEnvironment(&environment)
             process.environment = environment
             process.standardOutput = pipe
             process.standardError = pipe
@@ -363,6 +433,7 @@ final class WorkerClient {
         environment["PYTHONUNBUFFERED"] = "1"
         environment["GIGATTS_DEVICE"] = device
         environment["PATH"] = WorkerInstaller.searchPath
+        WorkerLocator.applyDiarizationEnvironment(&environment)
         process.environment = environment
         process.standardInput = input
         process.standardOutput = output

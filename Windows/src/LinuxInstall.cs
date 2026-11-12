@@ -23,9 +23,9 @@ static class LinuxInstaller
             _log("Приложение: " + AppContext.BaseDirectory + "\n");
             _log("Данные: " + AppPaths.Support + "\n");
             var workerSource = WorkerLocator.BundledWorker()
-                ?? throw new InvalidOperationException("В приложении нет worker.py. Пересоберите GigaTTS.");
+                ?? throw new InvalidOperationException("В приложении нет worker.py. Пересоберите GigaПисец.");
             var requirementsSource = WorkerLocator.BundledRequirements()
-                ?? throw new InvalidOperationException("В приложении нет requirements.txt. Пересоберите GigaTTS.");
+                ?? throw new InvalidOperationException("В приложении нет requirements.txt. Пересоберите GigaПисец.");
             var installedWorker = Path.Combine(AppPaths.Support, "worker.py");
             var requirements = Path.Combine(AppPaths.Support, "requirements.txt");
             File.Copy(workerSource, installedWorker, true);
@@ -86,10 +86,24 @@ static class LinuxInstaller
             if (!File.Exists(venvPython))
                 throw new InvalidOperationException("Не удалось создать окружение Python.");
 
-            _log("Устанавливаю PyTorch и GigaAM. Первый раз это занимает несколько минут…\n");
+            _log("Устанавливаю PyTorch, GigaAM и pyannote. Первый раз это занимает несколько минут…\n");
             _log("Видеодрайвер NVIDIA этот шаг не ставит. Если в PyTorch нет CUDA, распознавание перейдёт на процессор.\n");
             await Run(venvPython, "-u", "-m", "pip", "install", "--upgrade", "pip");
             await Run(venvPython, "-u", "-m", "pip", "install", "-r", requirements);
+            if (WorkerLocator.BundledDiarizationModel() is { } bundled)
+            {
+                _log("Использую встроенную модель разделения спикеров: " + bundled + "\n");
+            }
+            else
+            {
+                _log("Скачиваю модель разделения спикеров (pyannote)…\n");
+                var diarization = await RunAllowFail(venvPython, "-u", installedWorker, "--download-diarization");
+                if (diarization != 0)
+                {
+                    _log("Разделение спикеров отложено: в сборке нет models/, либо задайте HF_TOKEN "
+                        + "(или ~/.cache/gigatts/hf-token). Диктовка и две дорожки звонка работают без этого.\n");
+                }
+            }
 
             var extras = new List<string>();
             var ffmpegDir = Path.GetDirectoryName(LinuxProc.Which("ffmpeg"));
@@ -196,6 +210,7 @@ static class LinuxInstaller
             info.Environment["PIP_DISABLE_PIP_VERSION_CHECK"] = "1";
             info.Environment["GIT_TERMINAL_PROMPT"] = "0";
             info.Environment["DEBIAN_FRONTEND"] = "noninteractive";
+            WorkerLocator.ApplyDiarizationEnvironment(info);
             using var process = new Process { StartInfo = info };
             if (!process.Start())
                 throw new InvalidOperationException("Не удалось запустить " + path);

@@ -4,7 +4,7 @@
   <StackPanel Spacing="8">
     <Button x:Name="InstallButton" Content="Установить распознавание" HorizontalAlignment="Left" Click="OnInstall"/>
     <TextBlock x:Name="Hint" Opacity="0.7" TextWrapping="Wrap"
-               Text="Ставит Python, Git, ffmpeg, PyTorch и GigaAM в папку данных пользователя. Интернет нужен для загрузки. Кнопка берёт файлы из папки приложения, поэтому собранный GigaTTS можно переносить."/>
+               Text="Ставит Python, Git, ffmpeg, PyTorch, GigaAM и pyannote в папку данных пользователя. Интернет нужен для GigaAM. Кнопка берёт файлы из папки приложения, поэтому собранный GigaПисец можно переносить. Модель разделения спикеров уже в приложении; HF_TOKEN нужен только если её нет в сборке."/>
     <Border x:Name="LogFrame" BorderBrush="#808080" BorderThickness="1" CornerRadius="8" Padding="8" IsVisible="False">
       <ScrollViewer x:Name="LogScroll" Height="220" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
         <TextBox x:Name="LogBox" IsReadOnly="True" AcceptsReturn="True" TextWrapping="Wrap"

@@ -26,6 +26,7 @@ public partial class App : Application
         _state.OnNeedOnboarding = ShowOnboarding;
         _state.OnOpenCalls = () => ShowMain();
         _state.OnOpenSettings = ShowSettings;
+        _state.PickMeetingFileAsync = PickMeetingFileAsync;
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
             desktop.ShutdownMode = ShutdownMode.OnExplicitShutdown;
@@ -42,7 +43,7 @@ public partial class App : Application
         _tray = new TrayIcon
         {
             Icon = SharedIcon,
-            ToolTipText = "GigaTTS",
+            ToolTipText = "GigaПисец",
             IsVisible = true
         };
         _tray.Clicked += (_, _) => ShowMain();
@@ -70,6 +71,7 @@ public partial class App : Application
         }
         menu.Add(Item(state.DictationButtonText, state.ToggleHandsFree, state.CanDictate));
         menu.Add(Item(state.CallButtonText, state.ToggleCall, state.CanToggleCall));
+        menu.Add(Item("Открыть запись встречи…", state.ImportMeetingRecording, state.CanImportMeeting));
         if (state.LastTranscript.Length > 0)
         {
             menu.Add(new NativeMenuItemSeparator());
@@ -93,7 +95,7 @@ public partial class App : Application
             menu.Add(Item(state.LastError, enabled: false));
         }
         menu.Add(new NativeMenuItemSeparator());
-        menu.Add(Item("GigaTTS…", () =>
+        menu.Add(Item("GigaПисец…", () =>
         {
             state.ShowSection("calls");
         }));
@@ -103,11 +105,11 @@ public partial class App : Application
         _tray.Menu = menu;
         _tray.ToolTipText = state.Phase switch
         {
-            Phase.Dictating => "GigaTTS — диктовка",
-            Phase.Transcribing => "GigaTTS — распознавание",
-            Phase.RecordingCall => "GigaTTS — запись звонка",
-            Phase.TranscribingCall => "GigaTTS — расшифровка звонка",
-            _ => "GigaTTS"
+            Phase.Dictating => "GigaПисец — диктовка",
+            Phase.Transcribing => "GigaПисец — распознавание",
+            Phase.RecordingCall => "GigaПисец — запись звонка",
+            Phase.TranscribingCall => "GigaПисец — расшифровка звонка",
+            _ => "GigaПисец"
         };
     }
 
@@ -123,6 +125,14 @@ public partial class App : Application
         _main.Show();
         _main.Activate();
         _main.ApplySection();
+    }
+
+    async Task<string?> PickMeetingFileAsync()
+    {
+        ShowMain();
+        if (_main == null)
+            return null;
+        return await _main.PickMeetingFileAsync();
     }
 
     void ShowSettings()
