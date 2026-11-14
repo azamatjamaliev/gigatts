@@ -35,21 +35,22 @@ enum TextInserter {
         let range = element.flatMap { selectedRange($0) }
 
         // Single path first: clipboard + one ⌘V.
-        // Telegram accepts both ⌘V and AXSelectedText; if pasteLanded is a false negative
-        // (AXValue lags / empty), the old AX fallback inserted a second copy.
+        // Telegram / Cursor accept ⌘V but AX often lags or also accepts AXSelectedText —
+        // trusting paste skips dual pasteLanded polls + AX (avoids Telegram duplicate and
+        // Cursor reading the clipboard after a premature restore).
         if insertViaPasteboard(trimmed) {
             if let element, let before {
-                if pasteLanded(trimmed, before: before, range: range, element: element) {
-                    markInserted(trimmed)
-                    AppLog.shared.write("INFO", "Вставка через ⌘V.")
-                    return .inserted
-                }
                 if shouldTrustPasteWithoutAccessibility(before: before) {
                     markInserted(trimmed)
                     AppLog.shared.write(
                         "INFO",
-                        "Вставка через ⌘V (AX пропущен — иначе дубль в Telegram и похожих полях)."
+                        "Вставка через ⌘V (AX пропущен — иначе дубль / гонка буфера в Telegram, Cursor и похожих полях)."
                     )
+                    return .inserted
+                }
+                if pasteLanded(trimmed, before: before, range: range, element: element) {
+                    markInserted(trimmed)
+                    AppLog.shared.write("INFO", "Вставка через ⌘V.")
                     return .inserted
                 }
                 // Last look before AX: paste may have landed after the first poll window.
@@ -79,9 +80,12 @@ enum TextInserter {
     }
 
     /// Prefer clipboard paste alone when AX verification is unreliable or the front app
-    /// is known to accept both paste and AX (double-insert).
+    /// is known to accept both paste and AX (double-insert), or Electron reads paste late.
     private static func shouldTrustPasteWithoutAccessibility(before: String) -> Bool {
         if frontmostLooksLikeTelegram() { return true }
+        // Cursor (ToDesktop/Electron): AX lags; long pasteLanded + early clipboard restore
+        // raced so ⌘V could read the *old* pasteboard. Trust one ⌘V, skip AX.
+        if frontmostLooksLikeCursor() { return true }
         // Empty AXValue is common for some composers while ⌘V still works; AX then duplicates.
         if before.isEmpty { return true }
         return false
@@ -92,6 +96,18 @@ enum TextInserter {
             return false
         }
         return id.contains("telegram")
+    }
+
+    /// Cursor ships as ToDesktop (`com.todesktop.230313mzl4w4u92`) named "Cursor".
+    private static func frontmostLooksLikeCursor() -> Bool {
+        guard let app = NSWorkspace.shared.frontmostApplication else { return false }
+        let id = app.bundleIdentifier?.lowercased() ?? ""
+        let name = (app.localizedName ?? "").lowercased()
+        if name == "cursor" { return true }
+        if id.contains("cursor") { return true }
+        // Official Cursor.ai mac build (ToDesktop wrapper around Electron).
+        if id == "com.todesktop.230313mzl4w4u92" { return true }
+        return false
     }
 
     private static func insertViaAccessibility(
@@ -236,7 +252,10 @@ enum TextInserter {
         // Brief settle so the target reads the new clipboard before ⌘V (Telegram is sensitive).
         Thread.sleep(forTimeInterval: 0.03)
         postCommandV()
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+        // Electron (Cursor) often reads the pasteboard well after ⌘V; restoring at ~0.8s
+        // raced with that read and pasted the *previous* clipboard. Keep changeCount so a
+        // user copy meanwhile is never overwritten.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.2) {
             if NSPasteboard.general.changeCount == marker {
                 snapshot.restore(to: NSPasteboard.general)
             }
