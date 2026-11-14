@@ -31,44 +31,19 @@ enum TextInserter {
             return .inserted
         }
 
-        let before = element.flatMap { stringAttribute($0, kAXValueAttribute as CFString) }
-        let range = element.flatMap { selectedRange($0) }
-
-        // Single path first: clipboard + one ⌘V.
-        // Telegram / Cursor accept ⌘V but AX often lags or also accepts AXSelectedText —
-        // trusting paste skips dual pasteLanded polls + AX (avoids Telegram duplicate and
-        // Cursor reading the clipboard after a premature restore).
+        // Универсальный путь для всех приложений: буфер → короткая пауза → один ⌘V.
+        // Не проверяем AX pasteLanded после ⌘V и не вставляем через Accessibility
+        // как «fallback» — ложные негативы AX давали дубли (Telegram) и ломали Electron
+        // (Cursor, Perplexity). Accessibility только если setString на pasteboard не удался.
         if insertViaPasteboard(trimmed) {
-            if let element, let before {
-                if shouldTrustPasteWithoutAccessibility(before: before) {
-                    markInserted(trimmed)
-                    AppLog.shared.write(
-                        "INFO",
-                        "Вставка через ⌘V (AX пропущен — иначе дубль / гонка буфера в Telegram, Cursor и похожих полях)."
-                    )
-                    return .inserted
-                }
-                if pasteLanded(trimmed, before: before, range: range, element: element) {
-                    markInserted(trimmed)
-                    AppLog.shared.write("INFO", "Вставка через ⌘V.")
-                    return .inserted
-                }
-                // Last look before AX: paste may have landed after the first poll window.
-                if pasteLanded(trimmed, before: before, range: range, element: element) {
-                    markInserted(trimmed)
-                    AppLog.shared.write("INFO", "Вставка через ⌘V.")
-                    return .inserted
-                }
-                AppLog.shared.write("INFO", "⌘V не изменила поле.")
-                let outcome = insertViaAccessibility(trimmed, element: element, before: before, range: range)
-                if outcome == .inserted { markInserted(trimmed) }
-                return outcome
-            }
             markInserted(trimmed)
             AppLog.shared.write("INFO", "Вставка через ⌘V.")
             return .inserted
         }
+
         guard let element else { return .failed }
+        let before = stringAttribute(element, kAXValueAttribute as CFString)
+        let range = selectedRange(element)
         let outcome = insertViaAccessibility(trimmed, element: element, before: before, range: range)
         if outcome == .inserted { markInserted(trimmed) }
         return outcome
@@ -77,37 +52,6 @@ enum TextInserter {
     private static func markInserted(_ text: String) {
         lastInsertText = text
         lastInsertAt = CFAbsoluteTimeGetCurrent()
-    }
-
-    /// Prefer clipboard paste alone when AX verification is unreliable or the front app
-    /// is known to accept both paste and AX (double-insert), or Electron reads paste late.
-    private static func shouldTrustPasteWithoutAccessibility(before: String) -> Bool {
-        if frontmostLooksLikeTelegram() { return true }
-        // Cursor (ToDesktop/Electron): AX lags; long pasteLanded + early clipboard restore
-        // raced so ⌘V could read the *old* pasteboard. Trust one ⌘V, skip AX.
-        if frontmostLooksLikeCursor() { return true }
-        // Empty AXValue is common for some composers while ⌘V still works; AX then duplicates.
-        if before.isEmpty { return true }
-        return false
-    }
-
-    private static func frontmostLooksLikeTelegram() -> Bool {
-        guard let id = NSWorkspace.shared.frontmostApplication?.bundleIdentifier?.lowercased() else {
-            return false
-        }
-        return id.contains("telegram")
-    }
-
-    /// Cursor ships as ToDesktop (`com.todesktop.230313mzl4w4u92`) named "Cursor".
-    private static func frontmostLooksLikeCursor() -> Bool {
-        guard let app = NSWorkspace.shared.frontmostApplication else { return false }
-        let id = app.bundleIdentifier?.lowercased() ?? ""
-        let name = (app.localizedName ?? "").lowercased()
-        if name == "cursor" { return true }
-        if id.contains("cursor") { return true }
-        // Official Cursor.ai mac build (ToDesktop wrapper around Electron).
-        if id == "com.todesktop.230313mzl4w4u92" { return true }
-        return false
     }
 
     private static func insertViaAccessibility(
@@ -148,16 +92,6 @@ enum TextInserter {
         var role: CFTypeRef?
         AXUIElementCopyAttributeValue(element, kAXRoleAttribute as CFString, &role)
         return (role as? String) == "AXSecureTextField"
-    }
-
-    private static func pasteLanded(_ text: String, before: String, range: NSRange?, element: AXUIElement) -> Bool {
-        // ~0.4s: Telegram / Electron often update AX after the synthetic ⌘V event.
-        for _ in 0..<8 {
-            Thread.sleep(forTimeInterval: 0.05)
-            if landed(text, before: before, range: range, element: element) { return true }
-            if selectionAdvanced(text, from: range, element: element) { return true }
-        }
-        return false
     }
 
     private static func alreadyPresent(
@@ -249,13 +183,12 @@ enum TextInserter {
         pasteboard.clearContents()
         guard pasteboard.setString(text, forType: .string) else { return false }
         let marker = pasteboard.changeCount
-        // Brief settle so the target reads the new clipboard before ⌘V (Telegram is sensitive).
+        // Brief settle so the target reads the new clipboard before ⌘V.
         Thread.sleep(forTimeInterval: 0.03)
         postCommandV()
-        // Electron (Cursor) often reads the pasteboard well after ⌘V; restoring at ~0.8s
-        // raced with that read and pasted the *previous* clipboard. Keep changeCount so a
-        // user copy meanwhile is never overwritten.
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2.2) {
+        // Delayed restore (≥3s): Electron/async paste (Cursor, Perplexity, …) may read
+        // the pasteboard long after ⌘V. changeCount guard — never overwrite a user copy.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3.2) {
             if NSPasteboard.general.changeCount == marker {
                 snapshot.restore(to: NSPasteboard.general)
             }
